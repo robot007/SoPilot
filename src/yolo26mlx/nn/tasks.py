@@ -41,6 +41,7 @@ from yolo26mlx.nn.modules import (
     Pose,
     PSABlock,
     Segment,
+    Segment26,
 )
 
 logger = logging.getLogger(__name__)
@@ -330,6 +331,7 @@ def parse_model(cfg: dict, ch: list[int], verbose: bool = True) -> tuple[ModuleL
         "A2C2f": A2C2f,
         "Detect": Detect,
         "Segment": Segment,
+        "Segment26": Segment26,
         "Pose": Pose,
         "OBB": OBB,
     }
@@ -449,13 +451,13 @@ def parse_model(cfg: dict, ch: list[int], verbose: bool = True) -> tuple[ModuleL
             ch_list = [ch[x] for x in f]
             args = [nc, reg_max, end2end, ch_list]
 
-        elif m is Segment:
-            # Segment: nc, nm, npr, reg_max, end2end, ch_list
+        elif m in {Segment, Segment26}:
+            # Segment/Segment26: nc, nm, npr, reg_max, end2end, ch_list
+            # YAML args format: [nc, nm, npr] where args[0]=nc (already known)
             c2 = None
             ch_list = [ch[x] for x in f]
-            # args should have [nm, npr, ...]
-            nm = args[0] if len(args) > 0 else 32
-            npr = args[1] if len(args) > 1 else 256
+            nm = args[1] if len(args) > 1 else 32
+            npr = args[2] if len(args) > 2 else 256
             npr = make_divisible(min(npr, max_channels) * width, 8)
             args = [nc, nm, npr, reg_max, end2end, ch_list]
 

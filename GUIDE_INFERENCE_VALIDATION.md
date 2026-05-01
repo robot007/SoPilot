@@ -40,7 +40,7 @@ auto-created by the scripts when needed.
 | Package | Version | Purpose |
 |---------|---------|---------|
 | mlx | >= 0.30.3 | Apple Silicon ML framework |
-| numpy | >= 1.24.0 | Array operations |
+| numpy | >= 2.0.0 | Array operations |
 | pillow | >= 10.0.0 | Image loading |
 | pyyaml | >= 6.0 | Config parsing |
 | tqdm | >= 4.65.0 | Progress bars |
@@ -270,8 +270,9 @@ python scripts/evaluate_coco_val.py --model yolo26n --data datasets/coco --outpu
 | Image size | 640 |
 | Confidence threshold | 0.001 |
 | NMS IoU threshold | 0.7 |
-| Max detections | 300 |
 | Batch size | 16 |
+
+> Max detections per image is fixed at 300 (model constant in `Detect`, not a CLI flag).
 
 ---
 

@@ -40,7 +40,7 @@ auto-created by the scripts when needed.
 | Package | Version | Purpose |
 |---------|---------|---------|
 | mlx | >= 0.30.3 | Apple Silicon ML framework |
-| numpy | >= 1.24.0 | Array operations |
+| numpy | >= 2.0.0 | Array operations |
 | pillow | >= 10.0.0 | Image loading |
 | pyyaml | >= 6.0 | Config parsing |
 | tqdm | >= 4.65.0 | Progress bars |
@@ -173,8 +173,8 @@ python scripts/benchmark_yolo26_training_mlx.py --models n s m l x --epochs 10 -
 |---------|-------|
 | Epochs | 10 |
 | Batch size | 4 |
-| Learning rate | 0.000119 (MuSGD auto) |
-| Optimizer | MuSGD (Muon + Nesterov SGD) |
+| Learning rate | 0.000119 (auto-LR formula `0.002 * 5 / (4 + nc)` for nc=80) |
+| Optimizer | auto (mirrors Ultralytics: AdamW for ≤10k iter, MuSGD otherwise) |
 | Dataset | COCO128 (128 images) |
 | Validation | After training (not during) |
 
@@ -189,7 +189,7 @@ python scripts/benchmark_yolo26_training_mps.py
 python scripts/benchmark_yolo26_training_mps.py --models n s --epochs 5 --batch 2
 ```
 
-Same CLI flags as MLX script (`--models`, `--epochs`, `--batch`, `--lr`, `--output`). Uses PyTorch MPS backend with Ultralytics trainer. Default learning rate is 0.00001 (differs from MLX's MuSGD auto rate).
+Same CLI flags as MLX script (`--models`, `--epochs`, `--batch`, `--lr`, `--output`). Uses PyTorch MPS backend with Ultralytics trainer. Default learning rate is 0.00001 (differs from MLX's auto-LR rate of 0.000119).
 
 ---
 

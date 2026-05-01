@@ -12,24 +12,31 @@ build/
 venv/
 env/
 
-# Models (download separately)
-models/*.pt
-models/*.npz
+# NOTE: leading-slash anchors below are intentional. Without them, plain
+# patterns like "datasets/" / "models/" / "images/" silently match
+# "src/yolo26mlx/cfg/datasets/", "src/yolo26mlx/cfg/models/" and any
+# nested "images/" — which strips the shipped dataset YAMLs (coco128.yaml,
+# coco128-seg.yaml) and model arch YAMLs (yolo26.yaml, yolo26-seg.yaml)
+# from the repo. Users who clone then hit `FileNotFoundError: Data config
+# not found: coco128` and cannot instantiate `YOLO("yolo26n.yaml")`.
+# Anchor these to the repo root only.
 
-# Datasets (download separately)
-datasets/
+# Models (download separately) — top-level models/ dir only
+/models/
+/models/*.pt
+/models/*.npz
+
+# Datasets (download separately) — top-level datasets/ dir only
+/datasets/
 
 # Results (auto-generated)
-results/
+/results/
 
-# Images
-images/
-
-# Models
-models/
+# Images — top-level images/ dir only
+/images/
 
 # Training runs
-runs/
+/runs/
 
 # IDE
 .vscode/

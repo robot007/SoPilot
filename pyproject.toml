@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yolo-mlx"
-version = "0.2.0"
+version = "0.3.0"
 description = "YOLO26 implementation using Apple MLX framework"
 readme = "README.md"
 license = "AGPL-3.0-only"
@@ -28,7 +28,15 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "mlx>=0.30.3",
+    # Upper bound on mlx: yolo26x-seg training reproducibly hangs on
+    # mlx 0.31.x (kIOGPUCommandBufferCallbackError) within 2–5 epochs
+    # despite the per-epoch ``mx.clear_cache()`` Metal-heap-fragmentation
+    # fix in ``yolo26mlx.engine.trainer``. Smaller seg models (n/s/m/l)
+    # and all detection workloads are unaffected, and the documented
+    # 81.5 s/epoch x-seg baseline was measured under mlx 0.30.x — so the
+    # supported floor is the same and the cap excludes only the broken
+    # 0.31.x line.
+    "mlx>=0.30.3,<0.31",
     "numpy>=2.0.0",
     "pillow>=10.0.0",
     "pyyaml>=6.0",
@@ -40,6 +48,11 @@ tracking = [
     "opencv-python>=4.8.0",
     "lap>=0.5.0",
     "scipy>=1.11.0",
+]
+segment = [
+    "pycocotools>=2.0",
+    "matplotlib>=3.7.0",
+    "opencv-python>=4.8.0",
 ]
 convert = [
     "torch>=2.0.0",
@@ -87,6 +100,8 @@ ignore = ["E501"]
 "tests/test_botsort.py" = ["E402"]
 "tests/test_mot_metrics.py" = ["E402"]
 "tests/test_tracking.py" = ["E402"]
+"tests/test_segmentation.py" = ["E402"]
+"tests/test_segmentation_integration.py" = ["E402"]
 
 [tool.black]
 line-length = 100

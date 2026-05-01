@@ -36,8 +36,8 @@ class YOLO:
 
     Example:
         >>> from yolo26mlx import YOLO
-        >>> model = YOLO("yolo26n.yaml")  # Create from config
-        >>> model = YOLO("yolo26n.safetensors")  # Load MLX weights
+        >>> model = YOLO("models/yolo26n.npz")  # Load MLX weights (npz)
+        >>> model = YOLO("models/yolo26n.safetensors")  # Load MLX weights (safetensors)
         >>> results = model.predict("image.jpg")
     """
 
@@ -75,6 +75,8 @@ class YOLO:
         if self.model_path is None:
             raise ValueError("No model path specified")
 
+        self._auto_detect_task()
+
         suffix = self.model_path.suffix.lower()
 
         if suffix in (".yaml", ".yml"):
@@ -87,6 +89,14 @@ class YOLO:
             self._load_pytorch()
         else:
             raise ValueError(f"Unsupported model format: {suffix}")
+
+    def _auto_detect_task(self):
+        """Auto-detect task type from model filename if not explicitly set."""
+        stem = self.model_path.stem.lower()
+        if "-seg" in stem and self.task == "detect":
+            self.task = "segment"
+            if self.verbose:
+                logger.info(f"Auto-detected task='segment' from filename '{self.model_path.name}'")
 
     def _build_from_yaml(self):
         """Build model from YAML configuration."""
@@ -163,6 +173,28 @@ class YOLO:
         )
         name = re.sub(r"layers\.23\.one2one_cv3\.(\d+)\.(\d+)\.", map_one2one_cv3_final, name)
 
+        # 7. Segmentation head (cv4 + one2one_cv4 mask coefficient layers)
+        name = re.sub(r"layers\.23\.cv4\.(\d+)\.(\d+)\.", r"layers.23.cv4.layer\1.layers.\2.", name)
+        name = re.sub(
+            r"layers\.23\.one2one_cv4\.(\d+)\.(\d+)\.",
+            r"layers.23.one2one_cv4.layer\1.layers.\2.",
+            name,
+        )
+
+        # 8. Proto26 multi-scale fusion (feat_refine ModuleList -> dict)
+        name = re.sub(
+            r"layers\.23\.proto\.feat_refine\.(\d+)\.",
+            r"layers.23.proto.feat_refine.layer\1.",
+            name,
+        )
+
+        # 9. Proto26 semseg Sequential (index -> layers.index)
+        name = re.sub(
+            r"layers\.23\.proto\.semseg\.(\d+)\.",
+            r"layers.23.proto.semseg.layers.\1.",
+            name,
+        )
+
         return name
 
     def _get_param_names(self, params, prefix=""):
@@ -188,6 +220,12 @@ class YOLO:
             names.add(prefix)
         return names
 
+    def _get_model_cfg(self) -> str:
+        """Return the YAML config filename based on task type."""
+        if self.task == "segment":
+            return "yolo26-seg.yaml"
+        return "yolo26.yaml"
+
     def _load_safetensors(self):
         """Load model weights from safetensors format."""
         if self.verbose:
@@ -197,11 +235,11 @@ class YOLO:
         match = re.search(r"yolo26([nsmlx])", self.model_path.stem)
         scale = match.group(1) if match else "n"
 
-        # Build model from yolo26.yaml with the appropriate scale
+        cfg = self._get_model_cfg()
         try:
-            self.model = build_model(cfg="yolo26.yaml", verbose=self.verbose, scale=scale)
+            self.model = build_model(cfg=cfg, verbose=self.verbose, scale=scale)
         except FileNotFoundError:
-            self.model = build_model(cfg="yolo26.yaml", verbose=self.verbose)
+            self.model = build_model(cfg=cfg, verbose=self.verbose)
 
         # Load weights with name mapping
         weights = dict(mx.load(str(self.model_path)))
@@ -231,11 +269,11 @@ class YOLO:
         match = re.search(r"yolo26([nsmlx])", self.model_path.stem)
         scale = match.group(1) if match else "n"
 
-        # Build model from yolo26.yaml with the appropriate scale
+        cfg = self._get_model_cfg()
         try:
-            self.model = build_model(cfg="yolo26.yaml", verbose=self.verbose, scale=scale)
+            self.model = build_model(cfg=cfg, verbose=self.verbose, scale=scale)
         except FileNotFoundError:
-            self.model = build_model(cfg="yolo26.yaml", verbose=self.verbose)
+            self.model = build_model(cfg=cfg, verbose=self.verbose)
 
         # Load weights with name mapping
         weights = dict(mx.load(str(self.model_path)))
@@ -261,14 +299,14 @@ class YOLO:
         if self.verbose:
             logger.info(f"Converting PyTorch weights from {self.model_path}")
 
-        # Determine yaml config from pt filename
-        pt_stem = self.model_path.stem
-        yaml_name = pt_stem.split("-")[0] + ".yaml"  # e.g., yolo26n-det.pt -> yolo26n.yaml
+        cfg = self._get_model_cfg()
+        match = re.search(r"yolo26([nsmlx])", self.model_path.stem)
+        scale = match.group(1) if match else "n"
 
         try:
-            self.model = build_model(cfg=yaml_name, verbose=self.verbose)
+            self.model = build_model(cfg=cfg, verbose=self.verbose, scale=scale)
         except FileNotFoundError:
-            self.model = build_model(cfg="yolo26n.yaml", verbose=self.verbose)
+            self.model = build_model(cfg=cfg, verbose=self.verbose)
 
         # Convert and load weights
         output_path = self.model_path.with_suffix(".safetensors")
@@ -331,6 +369,8 @@ class YOLO:
         name: str = "exp",
         exist_ok: bool = False,
         resume: bool = False,
+        val: bool = True,
+        verbose: bool = True,
     ):
         """Train the model.
 
@@ -345,6 +385,9 @@ class YOLO:
             name: Experiment name
             exist_ok: Overwrite existing experiment
             resume: Resume from last checkpoint
+            val: Run validation after each epoch (default: True). Set False
+                for throughput benchmarks where validation cost is irrelevant.
+            verbose: Print per-batch and per-epoch progress (default: True).
 
         Returns:
             Training results dict
@@ -363,6 +406,8 @@ class YOLO:
             name=name,
             exist_ok=exist_ok,
             resume=resume,
+            val=val,
+            verbose=verbose,
         )
 
     def val(

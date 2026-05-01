@@ -196,6 +196,95 @@ def box_iou(box1: mx.array, box2: mx.array, eps: float = 1e-7) -> mx.array:
     return inter_area / (union_area + eps)
 
 
+def crop_mask(masks: mx.array, boxes: mx.array) -> mx.array:
+    """Crop masks to bounding box regions.
+
+    Reference: ultralytics crop_mask in ops.py
+
+    Zeros mask pixels outside each bounding box using vectorized operations.
+
+    Args:
+        masks: Binary or float masks (N, H, W).
+        boxes: Bounding boxes (N, 4) in xyxy format, at mask resolution.
+
+    Returns:
+        Cropped masks (N, H, W) with pixels outside boxes zeroed.
+    """
+    n, h, w = masks.shape
+    x1, y1, x2, y2 = mx.split(boxes[:, :, None], 4, axis=1)  # each (N, 1, 1)
+    r = mx.arange(w, dtype=mx.float32)[None, None, :]  # (1, 1, W)
+    c = mx.arange(h, dtype=mx.float32)[None, :, None]  # (1, H, 1)
+    return masks * ((r >= x1) * (r < x2) * (c >= y1) * (c < y2))
+
+
+def process_mask(
+    protos: mx.array, mask_coeffs: mx.array, boxes: mx.array, shape: tuple[int, int]
+) -> mx.array:
+    """Generate instance masks from prototypes and coefficients.
+
+    Reference: ultralytics process_mask in ops.py
+
+    MLX specifics:
+    - Protos arrive in NHWC as (mask_h, mask_w, mask_dim) from the model
+    - Result is (N, H, W) binary masks at original image resolution
+
+    Args:
+        protos: Mask prototypes (mask_h, mask_w, mask_dim) in HWC from Proto26 output.
+        mask_coeffs: Per-detection mask coefficients (N, mask_dim).
+        boxes: Detection boxes (N, 4) in xyxy format at original image scale.
+        shape: Original image size as (height, width).
+
+    Returns:
+        Binary masks (N, H, W) at prototype resolution, cropped to boxes.
+    """
+    mh, mw, c = protos.shape
+    masks = mask_coeffs @ protos.reshape(-1, c).T  # (N, mh*mw)
+    masks = masks.reshape(-1, mh, mw)  # (N, H, W)
+
+    # Scale boxes to mask resolution
+    width_ratio = mw / shape[1]
+    height_ratio = mh / shape[0]
+    scaled_boxes = boxes * mx.array([width_ratio, height_ratio, width_ratio, height_ratio])
+
+    masks = crop_mask(masks, scaled_boxes)
+    return (masks > 0).astype(mx.uint8)
+
+
+def process_mask_upsample(
+    protos: mx.array, mask_coeffs: mx.array, boxes: mx.array, shape: tuple[int, int]
+) -> mx.array:
+    """Generate instance masks upsampled to original image size.
+
+    Same as process_mask but upsamples masks to the original image resolution
+    using nearest-neighbor interpolation for higher quality visualization.
+
+    Args:
+        protos: Mask prototypes (mask_h, mask_w, mask_dim) in HWC.
+        mask_coeffs: Per-detection mask coefficients (N, mask_dim).
+        boxes: Detection boxes (N, 4) in xyxy format at original image scale.
+        shape: Original image size as (height, width).
+
+    Returns:
+        Binary masks (N, H, W) at original image resolution, cropped to boxes.
+    """
+    mh, mw, c = protos.shape
+    masks = mask_coeffs @ protos.reshape(-1, c).T  # (N, mh*mw)
+    masks = masks.reshape(-1, mh, mw)  # (N, H, W)
+
+    # Upsample to original resolution via nearest-neighbor
+    target_h, target_w = shape
+    if mh != target_h or mw != target_w:
+        import math
+
+        sh = math.ceil(target_h / mh)
+        sw = math.ceil(target_w / mw)
+        masks = mx.repeat(mx.repeat(masks, sh, axis=1), sw, axis=2)
+        masks = masks[:, :target_h, :target_w]
+
+    masks = crop_mask(masks, boxes)
+    return (masks > 0).astype(mx.uint8)
+
+
 def non_max_suppression(
     boxes: mx.array,
     scores: mx.array,

@@ -21,7 +21,7 @@ import mlx.nn.losses as losses
 
 from yolo26mlx.utils.tal import TaskAlignedAssigner
 
-from .ops import bbox2dist, make_anchors
+from .ops import bbox2dist, crop_mask, make_anchors
 
 
 def bbox_iou(
@@ -764,7 +764,7 @@ class v8DetectionLoss:
         # Task-aligned assignment
         # IMPORTANT: Stop gradient on inputs to TAL - target assignment should not
         # propagate gradients back through the assignment logic (same as PyTorch detach)
-        _, target_bboxes, target_scores, fg_mask, _ = assigner(
+        _, target_bboxes, target_scores, fg_mask, target_gt_idx = assigner(
             mx.stop_gradient(mx.sigmoid(pred_scores)),
             mx.stop_gradient((pred_bboxes * stride_tensor).astype(gt_bboxes.dtype)),
             anchor_points * stride_tensor,
@@ -777,6 +777,10 @@ class v8DetectionLoss:
         target_bboxes = mx.stop_gradient(target_bboxes)
         target_scores = mx.stop_gradient(target_scores)
         fg_mask = mx.stop_gradient(fg_mask)
+        target_gt_idx = mx.stop_gradient(target_gt_idx)
+
+        # Store assignment results for subclass access (v8SegmentationLoss)
+        self._last_assign = (fg_mask, target_gt_idx, target_bboxes, target_scores)
 
         target_scores_sum = mx.maximum(mx.sum(target_scores), 1.0)
 
@@ -815,7 +819,12 @@ class v8SegmentationLoss(v8DetectionLoss):
     """Segmentation Loss for YOLO26.
 
     Reference: ultralytics/utils/loss.py v8SegmentationLoss
+
+    Combines detection loss (box, cls, dfl) with per-instance mask loss
+    and optional semantic segmentation auxiliary loss from Proto26.
     """
+
+    MAX_FG_PER_IMAGE = 200
 
     def __init__(
         self,
@@ -832,68 +841,243 @@ class v8SegmentationLoss(v8DetectionLoss):
         """
         super().__init__(model, tal_topk, tal_topk2)
         self.overlap = getattr(model.args, "overlap_mask", True) if hasattr(model, "args") else True
+        m = model.model[-1] if hasattr(model, "model") else model
+        self.nm = m.nm if hasattr(m, "nm") else 32
         self.bcedice_loss = BCEDiceLoss(weight_bce=0.5, weight_dice=0.5)
+
+    def parse_output(self, preds):
+        """Extract the predictions dict from segmentation model output.
+
+        Segmentation models return (preds_dict, proto_raw) during training.
+        The preds_dict already contains "proto" and "semseg" keys.
+        """
+        if isinstance(preds, tuple):
+            return preds[0]
+        return preds
 
     @staticmethod
     def single_mask_loss(
-        gt_mask: mx.array, pred: mx.array, proto: mx.array, area: mx.array
+        gt_mask: mx.array,
+        pred: mx.array,
+        proto: mx.array,
+        xyxy: mx.array,
+        area: mx.array,
     ) -> mx.array:
-        """Compute mask loss for a single image.
+        """Compute mask loss for foreground anchors in a single image.
 
         Reference: ultralytics v8SegmentationLoss.single_mask_loss
 
         Args:
-            gt_mask: Ground truth masks (N, H, W)
-            pred: Predicted mask coefficients (N, 32)
-            proto: Prototype masks (32, H, W)
-            area: Bounding box areas (N,)
+            gt_mask: Ground truth masks (K, H, W).
+            pred: Predicted mask coefficients for foreground anchors (K, nm).
+            proto: Prototype masks (H, W, nm) in NHWC.
+            xyxy: GT boxes in xyxy at mask resolution (K, 4).
+            area: Bounding box areas at mask resolution (K,).
 
         Returns:
-            Mask loss
+            Summed mask loss over all instances.
         """
-        # Compute predicted masks using einsum
-        pred_mask = mx.einsum("in,nhw->ihw", pred, proto)  # (N, H, W)
+        pred_mask = mx.einsum("kn,hwn->khw", pred, proto)  # (K, H, W)
 
-        # BCE loss
         loss = losses.binary_cross_entropy(pred_mask, gt_mask, with_logits=True, reduction="none")
-
-        # Crop to bounding box (simplified - full implementation would use crop_mask)
-        # For now, compute weighted loss
-        loss_per_instance = mx.mean(loss, axis=(1, 2)) / (area + 1e-7)
-
+        loss = crop_mask(loss, xyxy)  # zero loss outside boxes
+        loss_per_instance = mx.sum(loss, axis=(1, 2)) / (area + 1e-7)
         return mx.sum(loss_per_instance)
 
-    def __call__(
+    def loss(
         self,
         preds: dict[str, mx.array],
         batch: dict[str, mx.array],
-        assigner: Any,
     ) -> tuple[mx.array, mx.array]:
-        """Calculate segmentation loss.
+        """Compute combined detection and segmentation loss.
+
+        Overrides v8DetectionLoss.loss to add mask loss. Called from E2ELoss
+        for the one2many branch (with mask data) and one2one branch (without).
 
         Args:
-            preds: Predictions with 'boxes', 'scores', 'feats', 'mask_coefficient', 'proto'
-            batch: Batch with 'batch_idx', 'cls', 'bboxes', 'masks'
-            assigner: TaskAlignedAssigner
+            preds: Predictions dict. For one2many: includes "mask_coeff", "proto",
+                   and optionally "semseg". For one2one: only detection keys.
+            batch: Batch dict with "batch_idx", "cls", "bboxes", and optionally "masks".
 
         Returns:
-            Tuple of (total_loss, loss_items)
+            Tuple of (total_loss, loss_items) where loss_items has 5 components:
+            [box, seg, cls, dfl, semseg].
         """
-        # Get detection loss first
-        det_total_loss, det_loss = super().__call__(preds, batch, assigner)
+        mask_coeff = preds.get("mask_coeff")
+        proto = preds.get("proto")
+        semseg = preds.get("semseg")
+
+        det_preds = {k: v for k, v in preds.items() if k not in ("mask_coeff", "proto", "semseg")}
+
+        det_total, det_items = self._compute_loss(det_preds, batch, self.assigner)
+
+        has_mask_data = mask_coeff is not None and proto is not None and "masks" in batch
 
         loss = mx.zeros(5)  # box, seg, cls, dfl, semseg
-        loss = loss.at[0].add(det_loss[0])  # box
-        loss = loss.at[2].add(det_loss[1])  # cls
-        loss = loss.at[3].add(det_loss[2])  # dfl
+        loss = loss.at[0].add(det_items[0])
+        loss = loss.at[2].add(det_items[1])
+        loss = loss.at[3].add(det_items[2])
 
-        # Mask loss would be computed here
-        # For now, placeholder
-        seg_loss = mx.array(0.0)
-        loss = loss.at[1].add(seg_loss)
+        if has_mask_data:
+            fg_mask, target_gt_idx, target_bboxes, _ = self._last_assign
+            # imgsz in pixel space = P3_feature_hw * stride[0]. Matches PT:
+            # ``imgsz = torch.tensor(preds["feats"][0].shape[2:]) * self.stride[0]``.
+            # Must NOT be derived from proto.shape because Proto26 upsamples the
+            # P3 feature map (proto is 2× finer than P3), so using proto would
+            # double imgsz and halve the per-instance box in mask coordinates —
+            # that bug causes mask mAP to degrade during training while leaving
+            # box mAP intact.
+            p3_hw = det_preds["feats"][0].shape[1:3]
+            imgsz_px = float(self.stride[0]) * float(p3_hw[0])
+            seg_loss = self._calculate_segmentation_loss(
+                fg_mask, target_gt_idx, target_bboxes, mask_coeff, proto, batch, imgsz_px
+            )
+            loss = loss.at[1].add(seg_loss * self.box_gain)
 
-        batch_size = preds["boxes"].shape[0]
+            if semseg is not None and "masks" in batch:
+                sem_loss = self._calculate_semseg_loss(semseg, batch)
+                loss = loss.at[4].add(sem_loss * self.box_gain)
+
+        batch_size = det_preds["boxes"].shape[0]
         return mx.sum(loss) * batch_size, loss
+
+    def _calculate_segmentation_loss(
+        self,
+        fg_mask: mx.array,
+        target_gt_idx: mx.array,
+        target_bboxes: mx.array,
+        mask_coeff: mx.array,
+        proto: mx.array,
+        batch: dict[str, mx.array],
+        imgsz_px: float,
+    ) -> mx.array:
+        """Calculate per-instance segmentation loss.
+
+        Uses fixed-size top-K foreground selection per image for MLX
+        compatibility (no data-dependent shapes).
+
+        Args:
+            fg_mask: (B, N) foreground boolean mask from TAL.
+            target_gt_idx: (B, N) assigned GT index per anchor.
+            target_bboxes: (B, N, 4) assigned GT boxes in xyxy pixel coords.
+            mask_coeff: (B, total_anchors, nm) mask coefficients.
+            proto: (B, H_proto, W_proto, nm) prototypes in NHWC.
+            batch: Batch dict with "masks" key.
+            imgsz_px: Image size in pixel space used to normalise GT boxes
+                before converting into mask coordinates (matches PT's
+                ``imgsz = feats[0].shape[2:] * stride[0]``).
+
+        Returns:
+            Normalized segmentation loss scalar.
+        """
+        masks_gt = batch["masks"]  # (B, H_mask, W_mask) overlap map
+        batch_size = fg_mask.shape[0]
+        _, mh, mw, nm = proto.shape
+
+        total_loss = mx.array(0.0)
+        total_fg = mx.array(0.0)
+
+        for b in range(batch_size):
+            fg_b = fg_mask[b].astype(mx.float32)  # (N,)
+            n_fg = mx.sum(fg_b)
+
+            sort_idx = mx.argsort(-fg_b)
+            k = min(self.MAX_FG_PER_IMAGE, fg_b.shape[0])
+            top_idx = sort_idx[:k]
+
+            mc_fg = mask_coeff[b][top_idx]  # (K, nm)
+            gt_idx_fg = target_gt_idx[b][top_idx]  # (K,)
+            valid = fg_b[top_idx]  # (K,) 0 or 1
+            tb_fg = target_bboxes[b][top_idx]  # (K, 4) xyxy pixel
+
+            # Scale boxes from pixel space to mask resolution. ``imgsz_px`` is
+            # the P3-derived pixel size (not proto-derived — see loss()).
+            proto_b = proto[b]  # (mh, mw, nm)
+            scale = mx.array([mw, mh, mw, mh], dtype=mx.float32)
+            box_scale = scale / imgsz_px
+            tb_mask = tb_fg * box_scale
+
+            # Build GT masks from overlap map for each selected anchor
+            gt_overlap = masks_gt[b]  # (H_mask, W_mask)
+            gt_idx_expanded = gt_idx_fg[:, None, None] + 1  # (K, 1, 1)
+            gt_masks = (gt_overlap[None, :, :] == gt_idx_expanded).astype(mx.float32)  # (K, mh, mw)
+
+            # Compute mask loss
+            pred_masks = mx.einsum("kn,hwn->khw", mc_fg, proto_b)  # (K, mh, mw)
+            loss = losses.binary_cross_entropy(
+                pred_masks, gt_masks, with_logits=True, reduction="none"
+            )
+            loss = crop_mask(loss, tb_mask)
+
+            box_w = tb_mask[:, 2] - tb_mask[:, 0]
+            box_h = tb_mask[:, 3] - tb_mask[:, 1]
+            area = mx.maximum(box_w * box_h, mx.array(1.0))
+            loss_per = mx.sum(loss, axis=(1, 2)) / area
+            total_loss = total_loss + mx.sum(loss_per * valid)
+            total_fg = total_fg + n_fg
+
+        return total_loss / mx.maximum(total_fg, mx.array(1.0))
+
+    def _calculate_semseg_loss(
+        self,
+        pred_semseg: mx.array,
+        batch: dict[str, mx.array],
+    ) -> mx.array:
+        """Calculate semantic segmentation auxiliary loss.
+
+        Reference: ultralytics v8SegmentationLoss.__call__ semseg branch
+
+        Uses pre-computed ``sem_masks`` (per-pixel class index) from the
+        data loader, converts to one-hot, zeros out background, and
+        computes BCEDice loss against ``pred_semseg``.
+
+        Args:
+            pred_semseg: (B, H_feat, W_feat, nc) predicted class logits (NHWC).
+            batch: Batch dict with "sem_masks" (B, H_mask, W_mask) per-pixel
+                   class indices and "masks" (B, H_mask, W_mask) overlap map.
+
+        Returns:
+            Semantic segmentation loss scalar.
+        """
+        if "sem_masks" not in batch:
+            return mx.array(0.0)
+
+        sem_gt = batch["sem_masks"]  # (B, H_mask, W_mask) int class indices
+        masks_gt = batch["masks"]  # (B, H_mask, W_mask) overlap map
+        bs, sh, sw, nc = pred_semseg.shape
+
+        # Downsample sem_gt and masks_gt to pred resolution if sizes differ
+        _, mh, mw = sem_gt.shape
+        if mh != sh or mw != sw:
+            r_h = max(1, mh // sh)
+            r_w = max(1, mw // sw)
+            sem_ds = sem_gt[:, ::r_h, ::r_w][:, :sh, :sw]
+            masks_ds = masks_gt[:, ::r_h, ::r_w][:, :sh, :sw]
+        else:
+            sem_ds = sem_gt
+            masks_ds = masks_gt
+
+        # One-hot encode: (B, H, W) → (B, H, W, nc) → (B, nc, H, W) for BCEDice
+        sem_clamped = mx.clip(sem_ds, 0, nc - 1).astype(mx.int32)
+        sem_onehot = mx.zeros((bs, sh, sw, nc))
+        for b in range(bs):
+            oh = mx.zeros((sh * sw, nc))
+            flat_cls = sem_clamped[b].reshape(-1)
+            idx = mx.arange(sh * sw)
+            oh = oh.at[idx, flat_cls].add(mx.ones(sh * sw))
+            sem_onehot = sem_onehot.at[b].add(oh.reshape(sh, sw, nc))
+
+        sem_onehot = mx.clip(sem_onehot, 0, 1)
+
+        # Zero out background (where overlap map == 0)
+        bg_mask = (masks_ds == 0).astype(mx.float32)  # (B, H, W)
+        sem_onehot = sem_onehot * (1.0 - bg_mask[:, :, :, None])
+
+        # Transpose to NCHW for BCEDiceLoss (expects sum over axes 2, 3)
+        pred_nchw = mx.transpose(pred_semseg, (0, 3, 1, 2))  # (B, nc, H, W)
+        target_nchw = mx.transpose(sem_onehot, (0, 3, 1, 2))  # (B, nc, H, W)
+
+        return self.bcedice_loss(pred_nchw, target_nchw)
 
 
 class v8PoseLoss(v8DetectionLoss):
@@ -1176,7 +1360,8 @@ class E2ELoss:
         """Calculate weighted one-to-many and one-to-one losses.
 
         Args:
-            preds: Model predictions (dict with 'one2many' and 'one2one')
+            preds: Model predictions (dict with 'one2many' and 'one2one').
+                   For segmentation, also contains 'mask_coeff', 'proto', 'semseg'.
             batch: Batch data with targets
 
         Returns:
@@ -1186,6 +1371,11 @@ class E2ELoss:
 
         one2many = preds["one2many"]
         one2one = preds["one2one"]
+
+        # Forward segmentation data to one2many branch for mask loss
+        seg_keys = {k: preds[k] for k in ("mask_coeff", "proto", "semseg") if k in preds}
+        if seg_keys:
+            one2many = {**one2many, **seg_keys}
 
         loss_one2many = self.one2many.loss(one2many, batch)
         loss_one2one = self.one2one.loss(one2one, batch)

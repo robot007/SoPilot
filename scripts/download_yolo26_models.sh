@@ -10,7 +10,9 @@
 set -e  # Exit on error
 
 # Configuration
-MODELS=("yolo26n" "yolo26s" "yolo26m" "yolo26l" "yolo26x")
+DET_MODELS=("yolo26n" "yolo26s" "yolo26m" "yolo26l" "yolo26x")
+SEG_MODELS=("yolo26n-seg" "yolo26s-seg" "yolo26m-seg" "yolo26l-seg" "yolo26x-seg")
+MODELS=("${DET_MODELS[@]}" "${SEG_MODELS[@]}")
 BASE_URL="https://github.com/ultralytics/assets/releases/download/v8.4.0"
 
 # Get script directory and set model directory
@@ -50,7 +52,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  -m, --model MODEL   Download specific model (n, s, m, l, x)"
+            echo "  -m, --model MODEL   Download specific model (n, s, m, l, x, n-seg, s-seg, ...)"
             echo "  -h, --help          Show this help message"
             echo ""
             echo "Examples:"
@@ -125,7 +127,7 @@ else
 
     if [[ "$valid" == false ]]; then
         echo -e "${RED}Invalid model: ${SPECIFIC_MODEL}${NC}"
-        echo "Valid options: n, s, m, l, x"
+        echo "Valid options: n, s, m, l, x, n-seg, s-seg, m-seg, l-seg, x-seg"
         exit 1
     fi
 
@@ -160,6 +162,6 @@ fi
 echo -e "${GREEN}✓ All downloads complete!${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Convert weights:           yolo26 converters convert models/yolo26n.pt -o models/yolo26n.npz --verify"
+echo "  1. Convert weights:           yolo-mlx converters convert models/yolo26n.pt -o models/yolo26n.npz --verify"
 echo "  2. Run inference benchmark:   python scripts/benchmark_yolo26_inference.py"
 echo "  3. Run training benchmarks:   python scripts/benchmark_yolo26_training_mlx.py"

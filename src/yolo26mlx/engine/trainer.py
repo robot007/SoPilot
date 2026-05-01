@@ -21,12 +21,18 @@ import mlx.nn as nn
 import numpy as np
 import yaml
 from mlx.optimizers import clip_grad_norm
-from mlx.utils import tree_flatten, tree_map
+from mlx.utils import tree_map
 
 from yolo26mlx.data.coco_dataset import COCODataset
+from yolo26mlx.optim.adamw import AdamW
 from yolo26mlx.optim.musgd import MuSGD
 from yolo26mlx.utils.coco_metrics import COCOMetrics
-from yolo26mlx.utils.loss import E2ELoss
+from yolo26mlx.utils.loss import E2ELoss, v8SegmentationLoss
+from yolo26mlx.utils.metrics import (
+    SegmentationMetrics,
+    gt_instance_masks_from_overlap,
+    process_masks_at_proto,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +142,35 @@ class Trainer:
         self._warmup_nw = 0  # total warmup iterations
         self._nb = 0  # batches per epoch
 
+        # BN-freeze flag (set by __call__). When True, ``_apply_bn_freeze``
+        # walks the model after every ``model.train()`` and forces every
+        # ``nn.BatchNorm`` back into eval mode so its running stats stay put.
+        self._freeze_bn = False
+
+    def _apply_bn_freeze(self) -> None:
+        """Force every ``nn.BatchNorm`` into eval mode if BN is frozen.
+
+        ``nn.Module.train()`` recursively flips ``_training`` to True on every
+        submodule, including BatchNorm. This helper undoes that flip for BN
+        layers only, so:
+
+        * BN forward uses pretrained ``running_mean`` / ``running_var`` for
+          normalization (no train/eval feature-distribution mismatch), and
+        * BN ``running_mean`` / ``running_var`` are NOT mutated by the
+          forward pass, eliminating the drift that otherwise tanks
+          validation mAP on small batches.
+
+        BN ``weight`` / ``bias`` remain trainable — gradients still flow.
+        """
+        if not self._freeze_bn:
+            return
+
+        def _bn_to_eval(_, module: nn.Module) -> None:
+            if isinstance(module, nn.BatchNorm):
+                module._set_training_mode(False)
+
+        self.model.apply_to_modules(_bn_to_eval)
+
     def __call__(
         self,
         data: str,
@@ -150,6 +185,9 @@ class Trainer:
         resume: bool = False,
         weight_decay: float = 0.0005,
         momentum: float = 0.937,
+        lr: float | None = None,
+        optimizer: str = "auto",
+        freeze_bn: bool | None = None,
         val: bool = True,  # Enable/disable validation during training
         verbose: bool = True,  # Enable/disable progress printing
     ) -> dict[str, Any]:
@@ -168,6 +206,28 @@ class Trainer:
             resume: Resume from last checkpoint
             weight_decay: Weight decay
             momentum: SGD momentum
+            lr: Override the auto-computed base learning rate. If None, the
+                LR is derived from ``MuSGD.auto_lr`` / ``AdamW.auto_lr``
+                depending on ``optimizer`` (matches PyTorch Ultralytics
+                ``optimizer='auto'``). Pass a float to fine-tune pretrained
+                weights at a smaller LR.
+            optimizer: Optimizer selection. ``"auto"`` (default) mirrors
+                Ultralytics' ``optimizer='auto'``: AdamW for short runs
+                (``iterations <= 10000``, the typical fine-tune regime) and
+                MuSGD for longer runs. Use ``"adamw"`` or ``"musgd"`` to force
+                a specific optimizer.
+            freeze_bn: Freeze BatchNorm running statistics during training.
+                When ``True`` every ``nn.BatchNorm`` is held in eval mode for
+                the whole training loop, so its ``running_mean`` /
+                ``running_var`` are never updated and the forward pass uses
+                the (pretrained) running stats for normalization — only
+                ``weight`` / ``bias`` are still trained. This is the standard
+                fine-tuning fix for small batches on small datasets, where
+                noisy 2- or 4-image batch statistics otherwise drift the BN
+                running stats away from the pretrained feature distribution
+                and tank validation mAP. ``None`` (default) auto-enables the
+                freeze for typical fine-tune runs (``iterations <= 10000``,
+                same threshold Ultralytics uses to auto-pick AdamW).
             val: Run validation after each epoch (default: True)
             verbose: Print progress (default: True)
 
@@ -216,8 +276,22 @@ class Trainer:
         #   weight_decay = args.weight_decay * batch_size * accumulate / nbs
         scaled_wd = weight_decay * batch * accumulate_est / nbs
 
-        # Setup training (auto LR + MuSGD, matching PyTorch optimizer='auto')
-        self._setup_optimizer(momentum, scaled_wd, iterations=iterations_est)
+        # Setup optimizer matching PyTorch Ultralytics ``optimizer='auto'``:
+        # for short runs (iterations <= 10000) Ultralytics resolves ``auto`` to
+        # **AdamW** with ``lr_fit = 0.002 * 5 / (4 + nc)``, NOT MuSGD. Using
+        # MuSGD on a pretrained checkpoint at that LR perturbs weights
+        # aggressively (Newton-Schulz orthogonalization) and degrades small-set
+        # post-training mAP — which is why earlier MLX seg fine-tunes
+        # underperformed PyTorch despite identical LR. ``optimizer="auto"``
+        # below now picks AdamW or MuSGD with the same heuristic Ultralytics
+        # does in ``ultralytics/engine/trainer.py:build_optimizer``.
+        self._setup_optimizer(
+            momentum,
+            scaled_wd,
+            iterations=iterations_est,
+            lr_override=lr,
+            optimizer_choice=optimizer,
+        )
         self._total_epochs = epochs  # stored for warmup LR calculation + E2ELoss decay
         self._setup_loss()
 
@@ -227,8 +301,20 @@ class Trainer:
         # Initialize EMA (matches PyTorch: ModelEMA(self.model))
         self.ema = ModelEMA(self.model)
 
+        # Decide whether to freeze BN running stats. ``None`` mirrors the
+        # auto-AdamW threshold above: short fine-tune runs (≤10k iterations)
+        # see drifted BN running stats from noisy small-batch updates, and
+        # validation mAP collapses even when weights barely change. Freezing
+        # BN keeps the pretrained running_mean / running_var intact and only
+        # trains BN weight / bias — the standard fine-tune recipe.
+        if freeze_bn is None:
+            self._freeze_bn = iterations_est <= 10000
+        else:
+            self._freeze_bn = bool(freeze_bn)
+
         # Set model to training mode
         self.model.train()
+        self._apply_bn_freeze()
 
         if verbose:
             logger.info(f"\nTraining YOLO26 for {epochs} epochs")
@@ -236,9 +322,18 @@ class Trainer:
             logger.info(f"  Image size: {imgsz}")
             logger.info(f"  Batch size: {batch}")
             logger.info(f"  Learning rate: {self._lr0}")
-            logger.info(
-                f"  Optimizer: MuSGD (muon={self.optimizer.muon_scale}, sgd={self.optimizer.sgd_scale})"
-            )
+            opt_name = getattr(self, "_optimizer_name", type(self.optimizer).__name__)
+            if opt_name == "MuSGD":
+                logger.info(
+                    f"  Optimizer: MuSGD (muon={self.optimizer.muon_scale}, "
+                    f"sgd={self.optimizer.sgd_scale})"
+                )
+            else:
+                logger.info(
+                    f"  Optimizer: {opt_name} (betas=({self.optimizer.beta1}, "
+                    f"{self.optimizer.beta2}), wd={self.optimizer.weight_decay})"
+                )
+            logger.info(f"  Freeze BN running stats: {self._freeze_bn}")
             logger.info(f"  Save directory: {save_dir}")
 
         # Training loop
@@ -299,24 +394,44 @@ class Trainer:
             if save_period > 0 and (epoch + 1) % save_period == 0:
                 self._save_checkpoint(save_dir / f"epoch{epoch + 1}.safetensors")
 
+            # Per-epoch GPU memory hygiene. Sustained training of larger
+            # segmentation models (yolo26x-seg) on Apple Silicon can fragment
+            # the Metal heap across epochs, surfacing as monotonically rising
+            # epoch times and intermittent kIOGPUCommandBufferCallbackError
+            # hangs. Releasing MLX's reusable buffer pool at the epoch boundary
+            # (a known-safe sync point — model/optimizer/EMA state has just
+            # been mx.eval'd) stops that drift without affecting correctness.
+            mx.clear_cache()
+
             # Log progress
             epoch_time = time.time() - epoch_start
             if verbose:
-                # Extract all metrics
-                map50 = val_metrics.get("mAP50", 0.0)
-                map50_95 = val_metrics.get("mAP50-95", 0.0)
-                precision = val_metrics.get("precision", 0.0)
-                recall = val_metrics.get("recall", 0.0)
-
-                logger.info(
-                    f"Epoch {epoch + 1}/{epochs}: "
-                    f"loss={train_loss:.4f}, "
-                    f"mAP50={map50:.4f}, "
-                    f"mAP50-95={map50_95:.4f}, "
-                    f"P={precision:.4f}, "
-                    f"R={recall:.4f}, "
-                    f"time={epoch_time:.1f}s"
-                )
+                if val:
+                    # Validation ran this epoch — emit the full metric line.
+                    map50 = val_metrics.get("mAP50", 0.0)
+                    map50_95 = val_metrics.get("mAP50-95", 0.0)
+                    precision = val_metrics.get("precision", 0.0)
+                    recall = val_metrics.get("recall", 0.0)
+                    logger.info(
+                        f"Epoch {epoch + 1}/{epochs}: "
+                        f"loss={train_loss:.4f}, "
+                        f"mAP50={map50:.4f}, "
+                        f"mAP50-95={map50_95:.4f}, "
+                        f"P={precision:.4f}, "
+                        f"R={recall:.4f}, "
+                        f"time={epoch_time:.1f}s"
+                    )
+                else:
+                    # Validation disabled (e.g. throughput benchmarks). Don't
+                    # log mAP=0.0000 — that wasn't measured, it's the default
+                    # placeholder, and printing it confuses readers into
+                    # thinking training collapsed.
+                    logger.info(
+                        f"Epoch {epoch + 1}/{epochs}: "
+                        f"loss={train_loss:.4f}, "
+                        f"time={epoch_time:.1f}s "
+                        f"(val skipped)"
+                    )
 
         # Save final model
         self._save_checkpoint(save_dir / "last.safetensors")
@@ -361,64 +476,115 @@ class Trainer:
 
         return cfg
 
-    def _setup_optimizer(self, momentum: float, weight_decay: float, iterations: int = 20):
-        """Setup MuSGD optimizer matching PyTorch 'optimizer=auto'.
+    def _setup_optimizer(
+        self,
+        momentum: float,
+        weight_decay: float,
+        iterations: int = 20,
+        lr_override: float | None = None,
+        optimizer_choice: str = "auto",
+    ):
+        """Setup optimizer matching PyTorch Ultralytics ``optimizer='auto'``.
 
-        PyTorch's ultralytics uses MuSGD when optimizer='auto'.
-        It auto-computes LR from nc and uses:
-        - Muon (Newton-Schulz orthogonalization) for 2D+ weight tensors
-        - Nesterov SGD for all param groups
-        - Weight decay only on conv weights (not BN/bias)
+        Ultralytics' ``build_optimizer`` resolves ``optimizer='auto'`` based on
+        the estimated iteration count (see
+        ``ultralytics/engine/trainer.py:build_optimizer``):
+
+        * ``iterations <= 10000`` → **AdamW** with
+          ``lr_fit = round(0.002 * 5 / (4 + nc), 6)``, ``betas=(0.9, 0.999)``,
+          and weight_decay only on the "weight" param group (zero on bias /
+          norm). This is the path actual COCO128 / fine-tuning runs hit.
+        * ``iterations > 10000`` → **MuSGD** at ``lr=0.01`` with
+          ``muon=0.1, sgd=1.0``. This is the train-from-scratch path.
+
+        For both branches:
+        - Per-group weight decay (decay on weights, none on bias / BN).
+        - Momentum 0.937 (the user-facing default) is reserved as the
+          *warmup-end* target; the optimizer itself is built with momentum=0.9
+          to match Ultralytics' auto override.
+
+        Only the MuSGD branch additionally applies the fine-tuning regex
+        ``(?=.*23)(?=.*cv3)|proto.semseg|flow_model`` with ``lr * 3``;
+        ``ultralytics.engine.trainer.build_optimizer`` gates this 3× boost
+        behind ``if use_muon:`` (L1037–1052) and AdamW gets a uniform LR
+        across all groups. Applying the boost to AdamW too — as we did
+        previously — drove the head LR to ``3 × 1.19e-4 ≈ 3.57e-4`` and was
+        the dominant cause of the COCO128-Seg post-train mAP gap on the
+        larger models (worst on yolo26x-seg).
 
         Args:
-            momentum: Momentum for SGD.
-            weight_decay: Weight decay coefficient.
+            momentum: Momentum target (warmup end), typically 0.937.
+            weight_decay: Pre-scaled weight decay coefficient.
             iterations: Estimated total optimizer iterations.
+            lr_override: Optional explicit base LR (overrides the auto value).
+            optimizer_choice: ``"auto"`` (mirrors Ultralytics), ``"adamw"``,
+                or ``"musgd"`` to force a specific optimizer.
         """
-        # Auto-compute LR from nc (matches PyTorch optimizer='auto')
         nc = getattr(self, "_num_classes", 80)
-        auto_lr, muon_scale, sgd_scale = MuSGD.auto_lr(nc=nc, iterations=iterations)
+        choice = (optimizer_choice or "auto").lower()
+        if choice == "auto":
+            choice = "adamw" if iterations <= 10000 else "musgd"
 
-        # PyTorch auto mode overrides momentum from 0.937 → 0.9 for MuSGD:
-        #   name, lr, momentum = ("MuSGD", ..., 0.9)  # trainer.py L951
-        # Store original for warmup target, use 0.9 for optimizer init.
-        self._args_momentum = momentum  # 0.937 — used as warmup end target
-        momentum = 0.9  # auto override, matching PyTorch
+        # PyTorch auto mode overrides momentum 0.937 → 0.9 for both AdamW and
+        # MuSGD (see Ultralytics build_optimizer L998). Store the user-facing
+        # 0.937 as the *warmup-end* target; the optimizer runs at 0.9.
+        self._args_momentum = momentum  # 0.937 — warmup-end target
+        opt_momentum = 0.9
 
         # Weight decay is already scaled by caller:
         #   scaled_wd = weight_decay * batch_size * accumulate / nbs
-        # So we use it directly here.
         scaled_wd = weight_decay
 
-        self._lr0 = auto_lr
-        self.optimizer = MuSGD(
-            model=self.model,
-            lr=auto_lr,
-            momentum=momentum,
-            weight_decay=scaled_wd,
-            muon_scale=muon_scale,
-            sgd_scale=sgd_scale,
-            nesterov=True,
-        )
-
-        # Apply fine-tuning LR boost (matches PyTorch trainer.py L993-1001):
-        # Parameters matching the regex get lr * 3. In PyTorch this splits each
-        # param group into two sub-groups; here we store per-path LR scales.
-        ft_pattern = re.compile(r"(?=.*23)(?=.*cv3)|proto\.semseg|flow_model")
-        self.optimizer.set_lr_scale(self.model, ft_pattern, scale=3.0)
+        if choice == "adamw":
+            auto_lr = AdamW.auto_lr(nc=nc) if lr_override is None else float(lr_override)
+            self._lr0 = auto_lr
+            self._optimizer_name = "AdamW"
+            self.optimizer = AdamW(
+                model=self.model,
+                lr=auto_lr,
+                betas=(opt_momentum, 0.999),
+                eps=1e-8,
+                weight_decay=scaled_wd,
+                bias_correction=True,
+            )
+            # No per-param LR scale: PyTorch's ``build_optimizer`` only applies
+            # the 3× fine-tune boost when ``use_muon`` is True (L1037), so
+            # AdamW must run with a uniform LR across all groups.
+        elif choice == "musgd":
+            auto_lr_v, muon_scale, sgd_scale = MuSGD.auto_lr(nc=nc, iterations=iterations)
+            auto_lr = float(lr_override) if lr_override is not None else auto_lr_v
+            self._lr0 = auto_lr
+            self._optimizer_name = "MuSGD"
+            self.optimizer = MuSGD(
+                model=self.model,
+                lr=auto_lr,
+                momentum=opt_momentum,
+                weight_decay=scaled_wd,
+                muon_scale=muon_scale,
+                sgd_scale=sgd_scale,
+                nesterov=True,
+            )
+            # MuSGD-only: 3× LR on the cv3 head + Proto26 semseg + flow heads
+            # (matches ``build_optimizer`` lines 1037–1052).
+            ft_pattern = re.compile(r"(?=.*23)(?=.*cv3)|proto\.semseg|flow_model")
+            self.optimizer.set_lr_scale(self.model, ft_pattern, scale=3.0)
+        else:
+            raise ValueError(
+                f"Unknown optimizer choice {optimizer_choice!r}; expected one of "
+                "'auto', 'adamw', 'musgd'."
+            )
 
     def _setup_loss(self):
         """Setup loss function based on task.
 
         Uses E2ELoss which trains both one2many and one2one detection heads.
-        The one2one head is what's used at inference time, so it must receive
-        training gradients (not just one2many).
+        For segmentation, uses v8SegmentationLoss which adds mask loss to
+        the one2many branch.
         """
-        # E2ELoss creates two v8DetectionLoss instances internally:
-        #   - one2many (topk=10) for dense matching
-        #   - one2one  (topk=7, topk2=1) for end-to-end matching
-        # Each branch has its own TaskAlignedAssigner.
-        self.loss_fn = E2ELoss(model=self.model)
+        if self.task == "segment":
+            self.loss_fn = E2ELoss(model=self.model, loss_fn=v8SegmentationLoss)
+        else:
+            self.loss_fn = E2ELoss(model=self.model)
 
         # Set actual epoch count for E2ELoss decay schedule.
         # Without this, _epochs defaults to 100, causing the o2m weight
@@ -488,6 +654,7 @@ class Trainer:
     # Known dataset download URLs (name → zip URL)
     _DATASET_URLS = {
         "coco128": "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip",
+        "coco128-seg": "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128-seg.zip",
     }
 
     def _download_dataset(self, name: str, dest_dir: Path) -> Path | None:
@@ -543,7 +710,7 @@ class Trainer:
         val_path = data_cfg.get("val", "images/train2017")
 
         # Resolve paths
-        dataset_name = dataset_path  # original name for download lookup
+        dataset_name = Path(dataset_path).name  # strip parent dirs for download lookup
         dataset_path = Path(dataset_path)
         if not dataset_path.is_absolute():
             possible_paths = [
@@ -577,6 +744,7 @@ class Trainer:
                 split=train_split,
                 img_size=imgsz,
                 augment=True,
+                task=self.task,
             )
 
         # Load validation dataset
@@ -587,6 +755,7 @@ class Trainer:
                 root=str(dataset_path),
                 split=val_split,
                 img_size=imgsz,
+                task=self.task,
             )
 
     def _train_epoch(self, batch_size: int, imgsz: int, verbose: bool = True) -> float:
@@ -712,6 +881,23 @@ class Trainer:
                 "bboxes": bboxes,
             }
 
+            # Include masks and sem_masks for segmentation training
+            if self.task == "segment":
+                mask_list = []
+                sem_mask_list = []
+                mask_h = self._train_dataset.img_size // self._train_dataset.mask_ratio
+                for ann in batch_annotations:
+                    if "masks" in ann:
+                        mask_list.append(ann["masks"])
+                    else:
+                        mask_list.append(np.zeros((mask_h, mask_h), dtype=np.int32))
+                    if "sem_masks" in ann:
+                        sem_mask_list.append(ann["sem_masks"])
+                    else:
+                        sem_mask_list.append(np.zeros((mask_h, mask_h), dtype=np.int64))
+                targets["masks"] = mx.array(np.stack(mask_list), dtype=mx.int32)
+                targets["sem_masks"] = mx.array(np.stack(sem_mask_list), dtype=mx.int32)
+
             # Compute loss and gradients (no optimizer update yet)
             loss, grads = self._compute_grad_fn(batch_images, targets)
 
@@ -724,8 +910,26 @@ class Trainer:
 
             # Evaluate every batch to keep the computation graph bounded
             # and prevent Metal memory from growing unbounded.
-            flat_grads = tree_flatten(accumulated_grads)
-            mx.eval(loss, *[v for _, v in flat_grads])
+            #
+            # NOTE: pass the gradient TREE (not a flat-unpacked list of leaves)
+            # to ``mx.eval``. ``mx.eval(*flat_arrays)`` raises
+            # ``[eval] Attempting to eval an array without a primitive`` on
+            # mlx 0.31.x for the post-step state sync (user-reported, see
+            # CHANGELOG). The tree form walks the same set of leaves and is
+            # the documented MLX-recommended pattern (see ml-explore/mlx
+            # discussion #2914 and the existing line in
+            # ``_train_epoch_synthetic``: ``mx.eval(self.model.state, ...)``).
+            mx.eval(loss, accumulated_grads)
+
+            # Periodic mid-epoch GPU buffer-pool release. The per-batch
+            # mx.eval above is already a sync point, so dropping MLX's
+            # reusable buffer pool here is safe. Empirically, larger
+            # segmentation models (yolo26x-seg) accumulate Metal heap
+            # fragmentation within a single epoch — releasing every 8
+            # batches keeps fragmentation bounded without measurable
+            # throughput impact on smaller models.
+            if (batch_i + 1) % 8 == 0:
+                mx.clear_cache()
 
             # Step optimizer every `accumulate` batches, or on last batch
             is_last = batch_i == num_total - 1
@@ -739,13 +943,16 @@ class Trainer:
                 # Update EMA after each optimizer step (matches PyTorch optimizer_step)
                 if self.ema is not None:
                     self.ema.update(self.model)
-                # Single GPU sync for model params + optimizer state + EMA params
-                # (consolidated from 4 separate mx.eval calls)
-                eval_targets = [v for _, v in tree_flatten(self.model.parameters())]
-                eval_targets.extend(self.optimizer.state)
+                # Single GPU sync for model params + optimizer state + EMA params.
+                # Pass trees (not flat-unpacked positional arrays) — matches the
+                # pattern used at the synthetic-data sync site below and the
+                # MLX-recommended idiom from ml-explore/mlx discussion #2914.
+                # Avoids the ``[eval] Attempting to eval an array without a
+                # primitive`` failure mode on mlx 0.31.x.
+                sync_targets = [self.model.parameters(), self.optimizer.state]
                 if self.ema is not None:
-                    eval_targets.extend([v for _, v in tree_flatten(self.ema.ema_params)])
-                mx.eval(*eval_targets)
+                    sync_targets.append(self.ema.ema_params)
+                mx.eval(sync_targets)
                 accumulated_grads = None
                 steps_since_update = 0
 
@@ -820,16 +1027,24 @@ class Trainer:
     def _validate(self, batch_size: int, imgsz: int) -> dict[str, float]:
         """Run validation using official COCO metrics.
 
-        Uses COCOMetrics class for proper mAP calculation following the
-        official COCO evaluation protocol (as documented in ISSUES_RESOLVED.md).
+        Detection path uses ``COCOMetrics`` (box-only mAP). Segmentation path
+        is dispatched to ``_validate_segment``, which evaluates both mask
+        and box mAP at proto resolution to match Ultralytics' internal
+        ``SegmentMetrics`` (so MLX numbers are directly comparable to
+        ``ultralytics.YOLO.val()`` mask mAP after training).
 
         Args:
             batch_size: Batch size
             imgsz: Image size
 
         Returns:
-            Validation metrics dict with mAP50, mAP50-95, precision, recall
+            Validation metrics dict. For detection: ``mAP50``, ``mAP50-95``,
+            ``precision``, ``recall``. For segmentation, additionally
+            ``mAP50_mask``, ``mAP50-95_mask``, ``mAP50_box``, ``mAP50-95_box``.
         """
+        if self.task == "segment":
+            return self._validate_segment(batch_size, imgsz)
+
         # Set model to eval mode
         self.model.eval()
 
@@ -851,6 +1066,7 @@ class Trainer:
         if dataset is None:
             logger.warning("  Warning: Validation dataset not loaded")
             self.model.train()
+            self._apply_bn_freeze()
             return metrics
 
         # Initialize COCO metrics calculator with correct number of classes
@@ -864,14 +1080,20 @@ class Trainer:
         for batch_images, batch_annotations in dataloader:
             # Run inference (MLX doesn't require explicit no_grad context)
             preds = self.model(batch_images)
-            mx.eval(preds)  # Force evaluation
+            if isinstance(preds, tuple):
+                # Segmentation/pose heads return (detections, extra) tuples;
+                # extract detections array for box-metric validation.
+                mx.eval(*preds)
+                preds = preds[0]
+            else:
+                mx.eval(preds)
 
             # Process each image in the batch
             batch_size_actual = batch_images.shape[0]
 
             # Handle different output formats:
             # 1. Training mode returns dict: {'one2one': {...}, 'one2many': {...}}
-            # 2. Inference mode returns array: (B, max_det, 6) with [x,y,w,h,conf,class_idx]
+            # 2. Inference mode returns array: (B, max_det, 6[+nm]) with [x,y,w,h,conf,class_idx,...]
 
             if isinstance(preds, mx.array):
                 # Inference mode: (B, max_det, 6) = [x, y, w, h, conf, class_idx]
@@ -998,7 +1220,165 @@ class Trainer:
         if original_params is not None:
             self.ema.restore(self.model, original_params)
         self.model.train()
+        self._apply_bn_freeze()
 
+        return metrics
+
+    def _validate_segment(self, batch_size: int, imgsz: int) -> dict[str, float]:
+        """Segmentation validation: mask + box mAP at proto resolution.
+
+        Mirrors Ultralytics' internal segmentation evaluator:
+        - Inference produces ``(det, proto)``; mask coefficients are combined
+          with the proto grid and cropped to the predicted box, then
+          binarized — all at proto (160×160 for 640) resolution.
+        - GT masks come from ``COCODataset.task='segment'`` (overlap map at
+          ``img_size // mask_ratio = 160`` for our config), split into
+          per-instance binary masks at the same resolution.
+        - Both are accumulated by ``SegmentationMetrics``, which computes
+          per-class 101-point AP with greedy one-to-one TP matching — the
+          same recipe as ``ultralytics.utils.metrics.ap_per_class``.
+
+        Args:
+            batch_size: Validation batch size.
+            imgsz: Input image size (used only as a sanity check; resolutions
+                are derived from the proto grid and the dataloader's overlap
+                map, which are intrinsically aligned).
+
+        Returns:
+            Dict with ``mAP50_mask``, ``mAP50-95_mask``, ``mAP50_box``,
+            ``mAP50-95_box``, plus legacy ``mAP50``/``mAP50-95`` aliases set
+            to the mask values for backward compatibility with callers that
+            only read those keys.
+        """
+        # Default zero metrics — returned on early exits.
+        metrics: dict[str, float] = {
+            "mAP50": 0.0,
+            "mAP50-95": 0.0,
+            "mAP50_mask": 0.0,
+            "mAP50-95_mask": 0.0,
+            "mAP50_box": 0.0,
+            "mAP50-95_box": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+        }
+
+        self.model.eval()
+
+        # Use EMA weights for validation (matches PyTorch behaviour).
+        original_params = None
+        if self.ema is not None and self.ema.enabled:
+            original_params = self.ema.apply(self.model)
+
+        dataset = self._val_dataset
+        if dataset is None:
+            logger.warning("  Warning: Validation dataset not loaded")
+            self.model.train()
+            self._apply_bn_freeze()
+            return metrics
+
+        num_classes = getattr(self, "_num_classes", 80)
+        seg_metrics = SegmentationMetrics(num_classes=num_classes)
+        conf_thresh = 0.001
+
+        try:
+            for batch_images, batch_annotations in dataset.get_dataloader(
+                batch_size=batch_size, shuffle=False
+            ):
+                outputs = self.model(batch_images)
+                if isinstance(outputs, tuple) and len(outputs) >= 2:
+                    mx.eval(outputs[0], outputs[1])
+                    det_np = np.array(outputs[0])
+                    proto_np = np.array(outputs[1])
+                elif isinstance(outputs, mx.array):
+                    # Inference path that did not return a proto branch — we
+                    # cannot compute mask mAP, so fall back to box-only via
+                    # the predicted detections (still useful as a sanity
+                    # check, but mask metrics will stay at 0).
+                    mx.eval(outputs)
+                    det_np = np.array(outputs)
+                    proto_np = None
+                else:
+                    # Training-mode dict (one2one/one2many) shouldn't appear
+                    # in eval, but guard against it.
+                    continue
+
+                actual_batch = det_np.shape[0]
+                for b in range(actual_batch):
+                    pred_i = det_np[b]
+                    proto_i = proto_np[b] if proto_np is not None else None
+
+                    grid_masks, grid_boxes, grid_scores, grid_labels = process_masks_at_proto(
+                        pred_i, proto_i, conf_thresh
+                    )
+
+                    if b < len(batch_annotations):
+                        ann = batch_annotations[b]
+                    else:
+                        ann = {}
+
+                    overlap = ann.get("masks")
+                    overlap_arr = np.array(overlap) if overlap is not None else np.array([])
+                    gt_stack, k_inst = gt_instance_masks_from_overlap(overlap_arr)
+
+                    if k_inst > 0:
+                        gt_boxes = ann["boxes"][:k_inst].astype(np.float32)
+                        gt_labels = ann["labels"][:k_inst].astype(np.int64)
+                        gt_masks_arg: np.ndarray | None = gt_stack
+                    else:
+                        # Either no instances or no rasterized masks for this
+                        # image. Still feed any boxes/labels so the box-mAP
+                        # part of SegmentationMetrics can count GTs correctly.
+                        gt_boxes = np.asarray(ann.get("boxes", np.zeros((0, 4))), dtype=np.float32)
+                        gt_labels = np.asarray(
+                            ann.get("labels", np.zeros(0, dtype=np.int64)),
+                            dtype=np.int64,
+                        )
+                        gt_masks_arg = None
+
+                    seg_metrics.update(
+                        grid_boxes,
+                        grid_scores,
+                        grid_labels,
+                        grid_masks if grid_masks.size > 0 else None,
+                        gt_boxes,
+                        gt_labels,
+                        gt_masks_arg,
+                    )
+        except Exception as e:  # noqa: BLE001 — keep training robust
+            logger.warning("  Segmentation validation failed: %s", e)
+            if original_params is not None:
+                self.ema.restore(self.model, original_params)
+            self.model.train()
+            self._apply_bn_freeze()
+            return metrics
+
+        results = seg_metrics.compute()
+
+        m50_mask = float(results.get("mAP50_mask", 0.0))
+        m5095_mask = float(results.get("mAP50-95_mask", 0.0))
+        m50_box = float(results.get("mAP50_box", 0.0))
+        m5095_box = float(results.get("mAP50-95_box", 0.0))
+
+        metrics.update(
+            {
+                "mAP50_mask": round(m50_mask, 4),
+                "mAP50-95_mask": round(m5095_mask, 4),
+                "mAP50_box": round(m50_box, 4),
+                "mAP50-95_box": round(m5095_box, 4),
+                # Legacy aliases — surface mask mAP under the unprefixed
+                # keys so existing callers that only read mAP50/mAP50-95
+                # see the segmentation-relevant number.
+                "mAP50": round(m50_mask, 4),
+                "mAP50-95": round(m5095_mask, 4),
+                "precision": float(results.get("precision_mask", 0.0)),
+                "recall": float(results.get("recall_mask", 0.0)),
+            }
+        )
+
+        if original_params is not None:
+            self.ema.restore(self.model, original_params)
+        self.model.train()
+        self._apply_bn_freeze()
         return metrics
 
     def _save_checkpoint(self, path: str | Path):

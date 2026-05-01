@@ -25,8 +25,11 @@ from yolo26mlx.nn.modules import (
     Detect,
     DWConv,
     Pose,
+    Proto,
+    Proto26,
     PSABlock,
     Segment,
+    Segment26,
 )
 from yolo26mlx.nn.tasks import DetectionModel, ModuleList, Sequential, build_model
 
@@ -51,9 +54,13 @@ __all__ = [
     "AAttn",
     "ABlock",
     "A2C2f",
+    # Prototypes
+    "Proto",
+    "Proto26",
     # Heads
     "Detect",
     "Segment",
+    "Segment26",
     "Pose",
     "OBB",
     # Tasks
