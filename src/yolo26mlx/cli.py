@@ -25,7 +25,7 @@ def _cmd_predict(args: argparse.Namespace) -> int:
     """Handle ``predict`` subcommand."""
     from yolo26mlx import YOLO
 
-    model = YOLO(args.model)
+    model = YOLO(args.model, task=args.task)
     results = model.predict(
         source=args.source,
         conf=args.conf,
@@ -44,7 +44,7 @@ def _cmd_train(args: argparse.Namespace) -> int:
     """Handle ``train`` subcommand."""
     from yolo26mlx import YOLO
 
-    model = YOLO(args.model)
+    model = YOLO(args.model, task=args.task)
     model.train(
         data=args.data,
         epochs=args.epochs,
@@ -64,7 +64,7 @@ def _cmd_val(args: argparse.Namespace) -> int:
     """Handle ``val`` subcommand."""
     from yolo26mlx import YOLO
 
-    model = YOLO(args.model)
+    model = YOLO(args.model, task=args.task)
     model.val(
         data=args.data,
         batch=args.batch,
@@ -137,6 +137,16 @@ def _add_common_model_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_task_arg(parser: argparse.ArgumentParser) -> None:
+    """Add the ``--task`` argument shared by subcommands that need it."""
+    parser.add_argument(
+        "--task",
+        default="detect",
+        choices=["detect", "segment", "pose", "obb"],
+        help="Task type. Auto-detected from model filename if not specified. Default: detect.",
+    )
+
+
 def _add_quiet_flag(parser: argparse.ArgumentParser) -> None:
     """Add the ``-q/--quiet`` flag shared by most subcommands."""
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress informational logs.")
@@ -172,6 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--imgsz", type=int, default=640, help="Input image size. Default: 640."
     )
     predict_cmd.add_argument("--save", action="store_true", help="Save annotated images to disk.")
+    _add_task_arg(predict_cmd)
     _add_quiet_flag(predict_cmd)
     predict_cmd.set_defaults(func=_cmd_predict)
 
@@ -209,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_cmd.add_argument(
         "--resume", action="store_true", help="Resume training from last checkpoint."
     )
+    _add_task_arg(train_cmd)
     _add_quiet_flag(train_cmd)
     train_cmd.set_defaults(func=_cmd_train)
 
@@ -222,6 +234,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--conf", type=float, default=0.001, help="Confidence threshold. Default: 0.001."
     )
     val_cmd.add_argument("--iou", type=float, default=0.6, help="IoU threshold. Default: 0.6.")
+    _add_task_arg(val_cmd)
     _add_quiet_flag(val_cmd)
     val_cmd.set_defaults(func=_cmd_val)
 

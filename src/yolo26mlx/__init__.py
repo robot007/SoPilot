@@ -6,7 +6,7 @@ A high-performance implementation of YOLO26 using Apple's MLX framework
 for efficient inference and training on Apple Silicon.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "YOLO26 MLX Team"
 
 __all__ = ["YOLO", "__version__"]

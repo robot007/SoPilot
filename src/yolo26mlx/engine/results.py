@@ -14,6 +14,23 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 
+def _get_instance_color(cls_id: int, instance_idx: int) -> tuple[int, int, int]:
+    """Generate a distinct RGB color for a segmentation instance.
+
+    Combines class ID and instance index for visual diversity.
+
+    Args:
+        cls_id: Class index for base hue.
+        instance_idx: Instance index for hue offset.
+
+    Returns:
+        (R, G, B) tuple with values in 0-255.
+    """
+    hue = (cls_id * 0.1 + instance_idx * 0.618033988749895) % 1.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.8, 0.95)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
 def _get_track_color(track_id: int) -> tuple[int, int, int]:
     """Generate a deterministic RGB color for a track ID.
 
@@ -364,15 +381,38 @@ class Results:
             f"obb={len(self.obb) if self.obb else 0})"
         )
 
-    def plot(self) -> np.ndarray:
-        """Plot detections on image.
+    def plot(self, mask_alpha: float = 0.45) -> np.ndarray:
+        """Plot detections and segmentation masks on image.
 
-        Draws axis-aligned boxes and labels for detection outputs.
+        Draws semi-transparent colored masks (if available), then
+        axis-aligned boxes and labels for detection outputs.
+
+        Args:
+            mask_alpha: Opacity for mask overlay (0.0 = invisible, 1.0 = opaque).
 
         Returns:
             Annotated image as numpy array.
         """
-        pil_img = Image.fromarray(self.orig_img.copy())
+        img_array = self.orig_img.copy()
+
+        # Overlay segmentation masks before drawing boxes
+        if self.masks is not None and self.masks.data is not None and len(self.masks) > 0:
+            for i in range(len(self.masks)):
+                mask = self.masks.data[i]  # (H, W) binary mask
+                if mask.shape[:2] != img_array.shape[:2]:
+                    continue
+                cls_id = (
+                    int(self.boxes.cls[i]) if self.boxes is not None and i < len(self.boxes) else i
+                )
+                color = _get_instance_color(cls_id, i)
+                colored = np.zeros_like(img_array)
+                colored[:] = color
+                mask_bool = mask.astype(bool)
+                img_array[mask_bool] = (
+                    img_array[mask_bool] * (1 - mask_alpha) + colored[mask_bool] * mask_alpha
+                ).astype(np.uint8)
+
+        pil_img = Image.fromarray(img_array)
         draw = ImageDraw.Draw(pil_img)
 
         # Fallback COCO names to keep labels readable even if metadata is missing.

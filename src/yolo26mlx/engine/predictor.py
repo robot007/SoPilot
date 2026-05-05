@@ -360,8 +360,11 @@ class Predictor:
         # Run inference with compiled model
         preds = self._predict(images)
 
-        # Force evaluation
-        mx.eval(preds)
+        # Force evaluation (handles both mx.array and tuple of mx.arrays)
+        if isinstance(preds, tuple):
+            mx.eval(*preds)
+        else:
+            mx.eval(preds)
 
         # Post-process predictions
         results = []
@@ -407,7 +410,10 @@ class Predictor:
             # Process single image
             img = mx.expand_dims(images[i], axis=0)
             preds = self._predict(img)
-            mx.eval(preds)
+            if isinstance(preds, tuple):
+                mx.eval(*preds)
+            else:
+                mx.eval(preds)
 
             result = self._postprocess(
                 preds=preds,
@@ -450,7 +456,7 @@ class Predictor:
 
     def _postprocess(
         self,
-        preds: mx.array,
+        preds,
         batch_idx: int,
         orig_img: np.ndarray,
         path: str,
@@ -460,7 +466,8 @@ class Predictor:
         """Post-process model predictions.
 
         Args:
-            preds: Raw model outputs
+            preds: Raw model outputs. For detection: mx.array (B, N, 6).
+                   For segmentation: tuple of (mx.array (B, N, 6+nm), mx.array protos).
             batch_idx: Batch index
             orig_img: Original image
             path: Image path
@@ -470,24 +477,34 @@ class Predictor:
         Returns:
             Results object
         """
-        # Get predictions for this batch item
-        if isinstance(preds, list | tuple):
-            pred = preds[batch_idx] if len(preds) > 1 else preds[0]
-        elif isinstance(preds, mx.array):
-            pred = preds[batch_idx] if preds.shape[0] > 1 else preds[0]
+        # Segmentation returns (det_with_coeffs, protos) tuple
+        protos = None
+        if isinstance(preds, tuple) and self.task == "segment":
+            det_preds, proto_preds = preds
+            pred = det_preds[batch_idx] if det_preds.shape[0] > 1 else det_preds[0]
+            protos = proto_preds[batch_idx] if proto_preds.shape[0] > 1 else proto_preds[0]
+            if isinstance(pred, mx.array):
+                pred = np.array(pred)
+            if isinstance(protos, mx.array):
+                protos = np.array(protos)
         else:
-            pred = preds
-
-        # Convert to numpy for processing
-        if isinstance(pred, mx.array):
-            pred = np.array(pred)
+            if isinstance(preds, list | tuple):
+                pred = preds[batch_idx] if len(preds) > 1 else preds[0]
+            elif isinstance(preds, mx.array):
+                pred = preds[batch_idx] if preds.shape[0] > 1 else preds[0]
+            else:
+                pred = preds
+            if isinstance(pred, mx.array):
+                pred = np.array(pred)
 
         # Apply task-specific post-processing
         if self.task == "detect":
             boxes = self._postprocess_detect(pred, orig_img.shape[:2], letterbox_info, conf)
             return Results(orig_img=orig_img, path=path, names=self.names, boxes=boxes)
         elif self.task == "segment":
-            boxes, masks = self._postprocess_segment(pred, orig_img.shape[:2], letterbox_info, conf)
+            boxes, masks = self._postprocess_segment(
+                pred, protos, orig_img.shape[:2], letterbox_info, conf
+            )
             return Results(orig_img=orig_img, path=path, names=self.names, boxes=boxes, masks=masks)
         elif self.task == "pose":
             boxes, keypoints = self._postprocess_pose(
@@ -589,23 +606,142 @@ class Predictor:
         return Boxes(output, orig_shape)
 
     def _postprocess_segment(
-        self, pred: np.ndarray, orig_shape: tuple, letterbox_info: dict, conf: float
+        self,
+        pred: np.ndarray,
+        protos: np.ndarray | None,
+        orig_shape: tuple,
+        letterbox_info: dict,
+        conf: float,
     ) -> tuple:
         """Post-process segmentation predictions into Boxes and Masks.
 
+        Segment26 output format (end2end): each detection row is
+        [cx, cy, w, h, conf, class_idx, mask_coeff_0, ..., mask_coeff_{nm-1}].
+
+        Steps:
+        1. Split detection columns ([:6]) from mask coefficients ([6:])
+        2. Filter by confidence and rescale boxes (reuse detect logic)
+        3. Compute instance masks: coefficients @ prototypes, crop to box, binarize
+
         Args:
-            pred: Raw model output array for one image.
+            pred: Model output (N, 6+nm) for one image.
+            protos: Mask prototypes (H_proto, W_proto, nm) in HWC from Proto26.
             orig_shape: Original image shape (H, W) before preprocessing.
             letterbox_info: Dict with 'ratio', 'dw', 'dh' for coordinate rescaling.
-            conf: Confidence threshold for filtering detections.
+            conf: Confidence threshold.
 
         Returns:
             Tuple of (Boxes, Masks) for this image.
         """
-        # TODO: Implement segmentation post-processing
-        boxes = self._postprocess_detect(pred, orig_shape, letterbox_info, conf)
-        masks = Masks(None, orig_shape)
-        return boxes, masks
+        if pred is None or len(pred) == 0 or protos is None:
+            return Boxes(np.empty((0, 6)), orig_shape), Masks(None, orig_shape)
+
+        if pred.ndim == 1:
+            pred = pred.reshape(1, -1)
+
+        n_cols = pred.shape[-1]
+
+        if n_cols <= 6:
+            boxes = self._postprocess_detect(pred, orig_shape, letterbox_info, conf)
+            return boxes, Masks(None, orig_shape)
+
+        # Split: first 6 columns are detection, rest are mask coefficients
+        det_pred = pred[:, :6]
+        mask_coeffs = pred[:, 6:]
+
+        # Filter by confidence
+        if det_pred.shape[-1] == 6:
+            scores = det_pred[:, 4]
+        else:
+            scores = np.max(det_pred[:, 4:], axis=-1)
+        conf_mask = scores > conf
+
+        det_pred = det_pred[conf_mask]
+        mask_coeffs = mask_coeffs[conf_mask]
+
+        if len(det_pred) == 0:
+            return Boxes(np.empty((0, 6)), orig_shape), Masks(None, orig_shape)
+
+        boxes = self._postprocess_detect(det_pred, orig_shape, letterbox_info, conf)
+
+        if boxes.data.shape[0] == 0:
+            return boxes, Masks(None, orig_shape)
+
+        # protos shape: (mask_h, mask_w, mask_dim) in HWC
+        mh, mw, c = protos.shape
+        masks = mask_coeffs @ protos.reshape(-1, c).T  # (N, mh*mw)
+        masks = masks.reshape(-1, mh, mw)
+
+        ratio = letterbox_info["ratio"]
+        dw = letterbox_info["dw"]
+        dh = letterbox_info["dh"]
+        letterbox_h = orig_shape[0] * ratio + 2 * dh
+        letterbox_w = orig_shape[1] * ratio + 2 * dw
+
+        # Native (process_mask_native) ordering: upsample float masks to the
+        # full letterbox size, strip padding, resize to original image
+        # resolution, then crop with pixel-accurate xyxy edges in the original
+        # frame. Cropping at proto resolution (then upsampling) quantizes
+        # mask boundaries to ~4-pixel granularity, which materially hurts
+        # COCO mask mAP -- especially AP@small.
+        n = masks.shape[0]
+        lb_h = int(round(letterbox_h))
+        lb_w = int(round(letterbox_w))
+        if _HAS_CV2:
+            up_lb = np.zeros((n, lb_h, lb_w), dtype=np.float32)
+            for j in range(n):
+                up_lb[j] = cv2.resize(masks[j], (lb_w, lb_h), interpolation=cv2.INTER_LINEAR)
+        else:
+            import math
+
+            sh = math.ceil(lb_h / mh)
+            sw = math.ceil(lb_w / mw)
+            up_lb = np.repeat(np.repeat(masks, sh, axis=1), sw, axis=2)[:, :lb_h, :lb_w]
+
+        # Strip letterbox padding at full resolution (bias by 0.1 to avoid
+        # including edge padding pixels, matching ultralytics scale_masks).
+        top = int(round(dh - 0.1)) if dh > 0 else 0
+        left = int(round(dw - 0.1)) if dw > 0 else 0
+        bottom = lb_h - int(round(dh + 0.1)) if dh > 0 else lb_h
+        right = lb_w - int(round(dw + 0.1)) if dw > 0 else lb_w
+        masks = up_lb[:, top:bottom, left:right]
+
+        orig_h, orig_w = orig_shape
+        cur_h, cur_w = masks.shape[1], masks.shape[2]
+        if cur_h != orig_h or cur_w != orig_w:
+            if _HAS_CV2:
+                resized = np.zeros((n, orig_h, orig_w), dtype=np.float32)
+                for j in range(n):
+                    resized[j] = cv2.resize(
+                        masks[j], (orig_w, orig_h), interpolation=cv2.INTER_LINEAR
+                    )
+                masks = resized
+            else:
+                import math
+
+                sh = math.ceil(orig_h / cur_h)
+                sw = math.ceil(orig_w / cur_w)
+                masks = np.repeat(np.repeat(masks, sh, axis=1), sw, axis=2)[:, :orig_h, :orig_w]
+
+        # Crop with pixel-accurate edges in the original image frame.
+        xyxy_orig = boxes.xyxy.astype(np.float32)
+        cx1 = np.clip(np.round(xyxy_orig[:, 0]).astype(np.int32), 0, orig_w)
+        cy1 = np.clip(np.round(xyxy_orig[:, 1]).astype(np.int32), 0, orig_h)
+        cx2 = np.clip(np.round(xyxy_orig[:, 2]).astype(np.int32), 0, orig_w)
+        cy2 = np.clip(np.round(xyxy_orig[:, 3]).astype(np.int32), 0, orig_h)
+        rx = np.arange(orig_w, dtype=np.float32)[None, None, :]
+        ry = np.arange(orig_h, dtype=np.float32)[None, :, None]
+        crop = (
+            (rx >= cx1[:, None, None])
+            * (rx < cx2[:, None, None])
+            * (ry >= cy1[:, None, None])
+            * (ry < cy2[:, None, None])
+        )
+        masks = masks * crop
+
+        masks = (masks > 0).astype(np.uint8)
+
+        return boxes, Masks(masks, orig_shape)
 
     def _postprocess_pose(
         self, pred: np.ndarray, orig_shape: tuple, letterbox_info: dict, conf: float

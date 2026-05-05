@@ -397,21 +397,43 @@ class Segment(Detect):
         self.nm = nm
         self.npr = npr
 
-        # Mask coefficient head - stored as dict for MLX tracking
+        # Mask coefficient head (one2many) - stored as dict for MLX tracking
         c4 = max(ch[0] // 4, nm)
         self.cv4 = {
             f"layer{i}": Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, nm, 1))
             for i, x in enumerate(ch)
         }
 
-        # Prototype generation network
-        self.proto = Sequential(
-            Conv(ch[0], npr, 3),
-            nn.Upsample(scale_factor=2.0, mode="nearest"),
-            Conv(npr, npr, 3),
-            nn.Upsample(scale_factor=2.0, mode="nearest"),
-            Conv(npr, nm, 1),
-        )
+        # End-to-end one2one mask coefficient head
+        if end2end:
+            self.one2one_cv4 = {
+                f"layer{i}": Sequential(Conv(x, c4, 3), Conv(c4, c4, 3), nn.Conv2d(c4, nm, 1))
+                for i, x in enumerate(ch)
+            }
+        else:
+            self.one2one_cv4 = None
+
+        from .block import Proto
+
+        self.proto = Proto(ch[0], self.npr, self.nm)
+
+    def _forward_cv4(self, x: list[mx.array], cv4: dict) -> mx.array:
+        """Compute mask coefficients from a cv4 head.
+
+        Args:
+            x: Multi-scale feature maps.
+            cv4: Dict of mask coefficient convolution sequences.
+
+        Returns:
+            Mask coefficients (B, total_anchors, nm).
+        """
+        bs = x[0].shape[0]
+        mc_list = []
+        for i in range(self.nl):
+            mc = cv4[f"layer{i}"](x[i])
+            _, h, w, _ = mc.shape
+            mc_list.append(mx.reshape(mc, (bs, h * w, self.nm)))
+        return mx.concatenate(mc_list, axis=1)
 
     def __call__(self, x: list[mx.array]) -> tuple:
         """Forward pass for segmentation.
@@ -420,31 +442,201 @@ class Segment(Detect):
             x: List of multi-scale feature maps [(B, H_i, W_i, C_i), ...] from backbone/neck.
 
         Returns:
-            Tuple of (detection output with mask coefficients, mask prototypes (B, H_proto, W_proto, nm)).
+            Tuple of (detection output with mask coefficients, mask prototypes).
         """
-        # Generate prototypes from highest resolution feature
         p = self.proto(x[0])
+        mc = self._forward_cv4(x, self.cv4)
 
-        # Detection + mask coefficients
-        bs = x[0].shape[0]
-        mc_list = []  # mask coefficients
-
-        for i in range(self.nl):
-            mc = self.cv4[f"layer{i}"](x[i])
-            b, h, w, _ = mc.shape
-            mc_list.append(mx.reshape(mc, (bs, h * w, self.nm)))
-
-        mc = mx.concatenate(mc_list, axis=1)  # (B, anchors, nm)
-
-        # Get detection outputs
-        preds = super().__call__(x)
+        preds = self._forward_head(x, self.cv2, self.cv3)
+        if self.end2end:
+            x_detach = [mx.stop_gradient(xi) for xi in x]
+            one2one = self._forward_head(x_detach, self.one2one_cv2, self.one2one_cv3)
+            preds = {"one2many": preds, "one2one": one2one}
 
         if self.training:
             preds["mask_coeff"] = mc
             return preds, p
 
-        # Inference: append mask coefficients
-        return mx.concatenate([preds, mc], axis=-1), p
+        if self.end2end and self.one2one_cv4 is not None:
+            mc = self._forward_cv4(x, self.one2one_cv4)
+
+        data = preds["one2one"] if self.end2end else preds
+        boxes = data["boxes"]
+        scores = data["scores"]
+        feats = data["feats"]
+
+        if self.dfl is not None:
+            boxes = self.dfl(mx.transpose(boxes, (0, 2, 1)))
+            boxes = mx.transpose(boxes, (0, 2, 1))
+
+        anchor_points, stride_tensor = self._make_anchors(feats, self.stride)
+        boxes = self._dist2bbox(boxes, anchor_points)
+        stride_tensor = mx.expand_dims(stride_tensor, axis=0)
+        boxes = boxes * stride_tensor
+        scores = mx.sigmoid(scores)
+
+        if self.end2end:
+            det_mc = self._postprocess_end2end_segment(boxes, scores, mc)
+            return det_mc, p
+
+        return mx.concatenate([boxes, scores, mc], axis=-1), p
+
+    def _postprocess_end2end_segment(
+        self, boxes: mx.array, scores: mx.array, mask_coeffs: mx.array
+    ) -> mx.array:
+        """End-to-end topk selection that also gathers mask coefficients.
+
+        Same two-stage topk as Detect._postprocess_end2end, but additionally
+        gathers the nm mask coefficients for each selected detection.
+
+        Args:
+            boxes: (B, anchors, 4) decoded boxes in xywh format.
+            scores: (B, anchors, nc) class probabilities after sigmoid.
+            mask_coeffs: (B, anchors, nm) mask coefficient predictions.
+
+        Returns:
+            (B, max_det, 6+nm) tensor: [x, y, w, h, conf, cls, mc_0, ..., mc_{nm-1}].
+        """
+        batch_size = boxes.shape[0]
+        nc = scores.shape[2]
+        k = min(self.max_det, boxes.shape[1])
+
+        results = []
+        for b in range(batch_size):
+            box = boxes[b]
+            score = scores[b]
+            mc = mask_coeffs[b]
+
+            max_scores = mx.max(score, axis=-1)
+            ori_index = mx.argsort(-max_scores)[:k]
+
+            top_scores = score[ori_index]
+            flat_scores = top_scores.reshape(-1)
+            flat_top_idx = mx.argsort(-flat_scores)[:k]
+
+            anchor_idx = flat_top_idx // nc
+            class_idx = flat_top_idx % nc
+            final_anchor_idx = ori_index[anchor_idx]
+
+            final_boxes = box[final_anchor_idx]
+            final_scores = flat_scores[flat_top_idx]
+            final_classes = class_idx.astype(mx.float32)
+            final_mc = mc[final_anchor_idx]
+
+            result = mx.concatenate(
+                [
+                    final_boxes,
+                    mx.expand_dims(final_scores, axis=-1),
+                    mx.expand_dims(final_classes, axis=-1),
+                    final_mc,
+                ],
+                axis=-1,
+            )
+            results.append(result)
+
+        return mx.stack(results, axis=0)
+
+    def fuse(self) -> None:
+        """Remove one2many heads for inference optimization."""
+        self.cv2 = None
+        self.cv3 = None
+        self.cv4 = None
+
+
+class Segment26(Segment):
+    """YOLO26 Segmentation head with multi-scale Proto26.
+
+    Reference: ultralytics Segment26 class in nn/modules/head.py
+
+    Replaces single-scale Proto with Proto26 (multi-scale feature fusion)
+    for improved mask quality. Uses full feature list x instead of x[0].
+
+    MLX specifics:
+    - NHWC format for all tensors
+    - Proto26 may return a tuple (protos, semseg) during training
+    """
+
+    def __init__(
+        self,
+        nc: int = 80,
+        nm: int = 32,
+        npr: int = 256,
+        reg_max: int = 1,
+        end2end: bool = True,
+        ch: tuple[int, ...] = (),
+    ):
+        """Initialize Segment26 head.
+
+        Args:
+            nc: Number of classes
+            nm: Number of mask prototypes
+            npr: Prototype network channels
+            reg_max: DFL channels
+            end2end: End-to-end mode
+            ch: Input channel sizes from backbone (P3, P4, P5)
+        """
+        super().__init__(nc, nm, npr, reg_max, end2end, ch)
+        from ..modules.block import Proto26
+
+        self.proto = Proto26(ch, self.npr, self.nm, nc)
+
+    def __call__(self, x: list[mx.array]) -> tuple:
+        """Forward pass for YOLO26 segmentation.
+
+        Args:
+            x: List of multi-scale feature maps [(B, H_i, W_i, C_i), ...].
+
+        Returns:
+            Training: (preds_dict, proto) where preds_dict has mask_coeff key.
+            Inference: ((B, max_det, 6+nm) with mask coefficients appended, proto).
+        """
+        proto = self.proto(x)
+        mc = self._forward_cv4(x, self.cv4)
+
+        preds = self._forward_head(x, self.cv2, self.cv3)
+        if self.end2end:
+            x_detach = [mx.stop_gradient(xi) for xi in x]
+            one2one = self._forward_head(x_detach, self.one2one_cv2, self.one2one_cv3)
+            preds = {"one2many": preds, "one2one": one2one}
+
+        if self.training:
+            preds["mask_coeff"] = mc
+            if isinstance(proto, tuple):
+                preds["proto"] = proto[0]
+                preds["semseg"] = proto[1]
+            else:
+                preds["proto"] = proto
+            return preds, proto
+
+        if self.end2end and self.one2one_cv4 is not None:
+            mc = self._forward_cv4(x, self.one2one_cv4)
+
+        data = preds["one2one"] if self.end2end else preds
+        boxes = data["boxes"]
+        scores = data["scores"]
+        feats = data["feats"]
+
+        if self.dfl is not None:
+            boxes = self.dfl(mx.transpose(boxes, (0, 2, 1)))
+            boxes = mx.transpose(boxes, (0, 2, 1))
+
+        anchor_points, stride_tensor = self._make_anchors(feats, self.stride)
+        boxes = self._dist2bbox(boxes, anchor_points)
+        stride_tensor = mx.expand_dims(stride_tensor, axis=0)
+        boxes = boxes * stride_tensor
+        scores = mx.sigmoid(scores)
+
+        if self.end2end:
+            det_mc = self._postprocess_end2end_segment(boxes, scores, mc)
+            return det_mc, proto
+
+        return mx.concatenate([boxes, scores, mc], axis=-1), proto
+
+    def fuse(self) -> None:
+        """Remove one2many heads and strip Proto26 semseg for inference."""
+        super().fuse()
+        if hasattr(self.proto, "fuse"):
+            self.proto.fuse()
 
 
 class Pose(Detect):

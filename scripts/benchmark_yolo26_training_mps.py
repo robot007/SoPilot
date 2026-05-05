@@ -132,19 +132,14 @@ def setup_coco128() -> Path:
     Returns:
         Path to local YAML config file or standard coco128.yaml
     """
-    # Check if ultralytics has already downloaded it
-    ultralytics_datasets = Path.home() / ".config" / "Ultralytics" / "datasets"
-    coco128_path = ultralytics_datasets / "coco128"
-
-    # Also check common locations
-    alt_paths = [
+    search_paths = [
         DATASETS_DIR / "coco128",
         Path("datasets") / "coco128",
         Path.cwd() / "coco128",
     ]
 
     dataset_path = None
-    for path in [coco128_path] + alt_paths:
+    for path in search_paths:
         if path.exists() and (path / "images").exists():
             dataset_path = path
             break

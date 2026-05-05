@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 webAI, Inc.
 """
-YOLO26 PyTorch CPU Training Benchmark
-======================================
-Measures training performance using PyTorch CPU backend.
+YOLO26 Segmentation PyTorch CPU Training Benchmark
+===================================================
+Measures segmentation training performance using PyTorch CPU backend.
 
 Usage:
-    python benchmark_yolo26_training_cpu.py
-    python benchmark_yolo26_training_cpu.py --models n s      # Specific models only
-    python benchmark_yolo26_training_cpu.py --epochs 5        # Fewer epochs
-    python benchmark_yolo26_training_cpu.py --batch 2         # Smaller batch size
-    python benchmark_yolo26_training_cpu.py --output custom.json
+    python benchmark_yolo26_seg_training_cpu.py
+    python benchmark_yolo26_seg_training_cpu.py --models n s      # Specific models only
+    python benchmark_yolo26_seg_training_cpu.py --epochs 5        # Fewer epochs
+    python benchmark_yolo26_seg_training_cpu.py --batch 2         # Smaller batch size
+    python benchmark_yolo26_seg_training_cpu.py --output custom.json
 
 Output:
-    ../results/yolo26_cpu_training_final.json (default, overridable via --output)
+    ../results/yolo26_seg_cpu_training_final.json (default, overridable via --output)
 """
 
 import argparse
@@ -29,9 +29,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from _mps_seg_perf_patch import apply_mps_seg_perf_patch
 from _runtime_dirs import ensure_runtime_dirs
+from _vectorized_seg_loss import apply_vectorized_seg_loss
 
 logger = logging.getLogger(__name__)
+
+# Apply both seg-loss patches the MPS script uses, so the MPS-vs-CPU
+# comparison is apples-to-apples (identical loss code path on both backends).
+# Both patches are numerically identical to the upstream Ultralytics loss
+# (``apply_vectorized_seg_loss`` is equivalent by construction — see the
+# ``_vectorized_seg_loss`` module docstring; ``apply_mps_seg_perf_patch`` is
+# verified by ``_test_mps_seg_perf_patch.py``).
+apply_vectorized_seg_loss()
+apply_mps_seg_perf_patch()
 
 # =============================================================================
 # Configuration
@@ -66,7 +77,6 @@ def get_device_info() -> dict[str, Any]:
         "python_version": platform.python_version(),
     }
 
-    # Try to get chip name on macOS
     try:
         result = subprocess.run(
             ["sysctl", "-n", "machdep.cpu.brand_string"],
@@ -78,7 +88,6 @@ def get_device_info() -> dict[str, Any]:
     except Exception:
         pass
 
-    # Try to get CPU core count
     try:
         import os
 
@@ -86,7 +95,6 @@ def get_device_info() -> dict[str, Any]:
     except Exception:
         pass
 
-    # Get PyTorch info
     try:
         import torch
 
@@ -113,27 +121,25 @@ def get_process_memory() -> float:
           which is effectively peak memory usage.
     """
     try:
-        # Use resource module for cross-platform memory tracking
         usage = resource.getrusage(resource.RUSAGE_SELF)
-        # ru_maxrss is in bytes on macOS, KB on Linux
         if sys.platform == "darwin":
-            return usage.ru_maxrss / 1024 / 1024  # bytes to MB
+            return usage.ru_maxrss / 1024 / 1024
         else:
-            return usage.ru_maxrss / 1024  # KB to MB
+            return usage.ru_maxrss / 1024
     except Exception:
         return 0.0
 
 
-def setup_coco128() -> Path:
-    """Download and setup COCO128 dataset.
+def setup_coco128_seg() -> Path:
+    """Download and setup COCO128-Seg dataset (same 80 COCO classes as COCO128).
 
     Returns:
-        Path to local YAML config file or standard coco128.yaml
+        Path to local YAML config file or standard coco128-seg.yaml
     """
     search_paths = [
-        DATASETS_DIR / "coco128",
-        Path("datasets") / "coco128",
-        Path.cwd() / "coco128",
+        DATASETS_DIR / "coco128-seg",
+        Path("datasets") / "coco128-seg",
+        Path.cwd() / "coco128-seg",
     ]
 
     dataset_path = None
@@ -143,11 +149,10 @@ def setup_coco128() -> Path:
             break
 
     if dataset_path is None:
-        # Download COCO128 automatically (~7 MB)
-        logger.info("  COCO128 not found locally. Downloading...")
+        logger.info("  COCO128-Seg not found locally. Downloading...")
         DATASETS_DIR.mkdir(parents=True, exist_ok=True)
-        zip_path = DATASETS_DIR / "coco128.zip"
-        url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip"
+        zip_path = DATASETS_DIR / "coco128-seg.zip"
+        url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128-seg.zip"
         try:
             import zipfile
 
@@ -163,24 +168,23 @@ def setup_coco128() -> Path:
             with zipfile.ZipFile(str(zip_path), "r") as zf:
                 zf.extractall(str(DATASETS_DIR))
             zip_path.unlink()
-            dataset_path = DATASETS_DIR / "coco128"
+            dataset_path = DATASETS_DIR / "coco128-seg"
             if not (dataset_path / "images").exists():
-                raise RuntimeError("Extracted archive missing coco128/images/ directory")
-            logger.info(f"  Downloaded COCO128 to: {dataset_path}")
+                raise RuntimeError("Extracted archive missing coco128-seg/images/ directory")
+            logger.info(f"  Downloaded COCO128-Seg to: {dataset_path}")
         except Exception as e:
-            logger.error(f"  ERROR: Failed to download COCO128: {e}")
+            logger.error(f"  ERROR: Failed to download COCO128-Seg: {e}")
             logger.warning("  Training will fall back to synthetic data.")
             if zip_path.exists():
                 zip_path.unlink()
-            return Path("coco128.yaml")
+            return Path("coco128-seg.yaml")
 
-    logger.info(f"  Found COCO128 at: {dataset_path}")
+    logger.info(f"  Found COCO128-Seg at: {dataset_path}")
 
-    # Create local config with absolute paths
-    local_yaml = DATASETS_DIR / "coco128_local.yaml"
+    local_yaml = DATASETS_DIR / "coco128_seg_local.yaml"
     DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    config = f"""# COCO128 Local Configuration
+    config = f"""# COCO128-Seg Local Configuration
 path: {dataset_path.absolute()}
 train: images/train2017
 val: images/train2017
@@ -287,6 +291,28 @@ def save_progress(results: list[dict], output_file: Path):
         json.dump(results, f, indent=2)
 
 
+def _extract_val_metrics(val_results: Any) -> tuple[float, float, float, float]:
+    """Read mask and box mAP from validation results; mask zeros if seg unavailable."""
+    map50_mask = map50_95_mask = 0.0
+    map50_box = map50_95_box = 0.0
+    try:
+        if hasattr(val_results, "box"):
+            map50_box = float(val_results.box.map50)
+            map50_95_box = float(val_results.box.map)
+        else:
+            map50_box = float(getattr(val_results, "map50", 0) or 0)
+            map50_95_box = float(getattr(val_results, "map", 0) or 0)
+    except Exception:
+        map50_box = map50_95_box = 0.0
+    try:
+        if hasattr(val_results, "seg"):
+            map50_mask = float(val_results.seg.map50)
+            map50_95_mask = float(val_results.seg.map)
+    except Exception:
+        pass
+    return map50_mask, map50_95_mask, map50_box, map50_95_box
+
+
 def train_model_cpu(
     model_size: str,
     data_path: Path,
@@ -294,7 +320,7 @@ def train_model_cpu(
     batch_size: int,
     lr: float,
 ) -> dict[str, Any] | None:
-    """Train single PyTorch model with CPU backend and measure time.
+    """Train single segmentation PyTorch model with CPU backend and measure time.
 
     Args:
         model_size: Model size (n, s, m, l, x)
@@ -309,32 +335,26 @@ def train_model_cpu(
     try:
         import torch
 
-        # Explicitly set device to CPU
         device = "cpu"
         num_threads = torch.get_num_threads()
     except ImportError as e:
         logger.warning(f"  ⚠️  PyTorch not available: {e}")
         return None
 
-    # Import ultralytics YOLO
     try:
         from ultralytics import YOLO
     except ImportError as e:
         logger.warning(f"  ⚠️  Ultralytics not available: {e}")
         return None
 
-    # PyTorch ultralytics uses model names like "yolo26n.pt" which encode the scale
-    # The model will be auto-downloaded if not present locally
-    model_name = f"yolo26{model_size}"
-    model_file = f"{model_name}.pt"
+    model_name = f"yolo26{model_size}-seg"
+    model_file = f"yolo26{model_size}-seg.pt"
 
-    # Check for local weights first
     local_weights = MODELS_DIR / model_file
     if local_weights.exists():
         model_source = str(local_weights)
         logger.info(f"  Loading {model_name} from local weights: {local_weights}")
     else:
-        # Will trigger auto-download from ultralytics hub
         model_source = model_file
         logger.info(f"  Loading {model_name} (will download if not cached)...")
 
@@ -347,31 +367,33 @@ def train_model_cpu(
         traceback.print_exc()
         return None
 
-    # Clear memory before training
     clear_memory()
 
-    # Train with CPU device
     logger.info(
         f"  Training for {epochs} epochs (batch={batch_size}, lr={lr}, device={device}, threads={num_threads})..."
     )
     start_time = time.perf_counter()
 
+    # ``val=False`` skips per-epoch validation so the benchmark
+    # measures pure training throughput. Final mAP is computed via
+    # the explicit ``model.val(...)`` call after training.
     try:
         model.train(
             data=str(data_path),
+            task="segment",
             epochs=epochs,
             imgsz=640,
             batch=batch_size,
-            lr0=lr,  # PyTorch ultralytics uses lr0 for initial learning rate
-            patience=epochs + 1,  # Disable early stopping
-            save_period=-1,  # Don't save intermediate checkpoints
+            lr0=lr,
+            patience=epochs + 1,
+            save_period=-1,
             workers=4,
-            device=device,  # Use CPU
+            device=device,
             project=str(RESULTS_DIR / "cpu_runs"),
             name=model_name,
             exist_ok=True,
-            verbose=True,  # Show epoch-by-epoch progress
-            val=False,  # Disable validation during training (for fair timing)
+            verbose=True,
+            val=False,
         )
     except Exception as e:
         logger.error(f"  ⚠️  Training failed: {e}")
@@ -382,25 +404,15 @@ def train_model_cpu(
 
     training_time = time.perf_counter() - start_time
 
-    # Get peak memory usage (ru_maxrss is already peak)
     peak_memory = get_process_memory()
 
-    # Run validation separately
     logger.info("  Running validation...")
+    map50_mask = map50_95_mask = map50_box = map50_95_box = 0.0
     try:
         val_results = model.val(data=str(data_path), batch=batch_size, device=device)
-        # PyTorch ultralytics validation returns metrics object
-        # Access via val_results.box.map (mAP50-95) and val_results.box.map50 (mAP50)
-        if hasattr(val_results, "box"):
-            map50 = val_results.box.map50
-            map50_95 = val_results.box.map
-        else:
-            # Fallback for different result formats
-            map50 = getattr(val_results, "map50", 0)
-            map50_95 = getattr(val_results, "map", 0)
+        map50_mask, map50_95_mask, map50_box, map50_95_box = _extract_val_metrics(val_results)
     except Exception as e:
         logger.warning(f"  ⚠️  Validation failed: {e}")
-        map50, map50_95 = 0.0, 0.0
 
     return {
         "model": model_name,
@@ -409,28 +421,27 @@ def train_model_cpu(
         "epochs": epochs,
         "batch_size": batch_size,
         "learning_rate": lr,
-        "mAP50": round(float(map50), 4) if map50 else 0.0,
-        "mAP50-95": round(float(map50_95), 4) if map50_95 else 0.0,
+        "mAP50_mask": round(map50_mask, 4) if map50_mask else 0.0,
+        "mAP50-95_mask": round(map50_95_mask, 4) if map50_95_mask else 0.0,
+        "mAP50_box": round(map50_box, 4) if map50_box else 0.0,
+        "mAP50-95_box": round(map50_95_box, 4) if map50_95_box else 0.0,
         "peak_memory_mb": round(peak_memory, 1),
         "num_threads": num_threads,
         "device": "cpu",
     }
 
 
-# =============================================================================
-# Main
-# =============================================================================
-
-
 def main():
-    """Parse CLI args, set up dataset, train each model on CPU, and save benchmark results."""
+    """Parse CLI args, set up dataset, train each seg model on CPU, and save benchmark results."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    parser = argparse.ArgumentParser(description="YOLO26 PyTorch CPU Training Benchmark")
+    parser = argparse.ArgumentParser(
+        description="YOLO26 Segmentation PyTorch CPU Training Benchmark"
+    )
     parser.add_argument(
         "--models",
         nargs="+",
-        default=MODEL_SIZES,  # All models: n, s, m, l, x
+        default=MODEL_SIZES,
         choices=MODEL_SIZES,
         help="Model sizes to benchmark (default: all)",
     )
@@ -461,17 +472,16 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=RESULTS_DIR / "yolo26_cpu_training_final.json",
-        help="Output JSON path (default: results/yolo26_cpu_training_final.json)",
+        default=RESULTS_DIR / "yolo26_seg_cpu_training_final.json",
+        help="Output JSON path (default: results/yolo26_seg_cpu_training_final.json)",
     )
     args = parser.parse_args()
     ensure_runtime_dirs(PROJECT_DIR)
 
     logger.info("=" * 70)
-    logger.info("YOLO26 PyTorch CPU Training Benchmark")
+    logger.info("YOLO26 Segmentation PyTorch CPU Training Benchmark")
     logger.info("=" * 70)
 
-    # Set thread count if specified
     if args.threads is not None:
         try:
             import torch
@@ -481,23 +491,19 @@ def main():
         except Exception as e:
             logger.warning(f"\n⚠️  Failed to set thread count: {e}")
 
-    # Get device info
     logger.info("\n💻 Device Information:")
     device_info = get_device_info()
     for key, value in device_info.items():
         logger.info(f"   {key}: {value}")
 
-    # Setup dataset
-    logger.info("\n📦 Setting up COCO128 dataset...")
-    data_path = setup_coco128()
+    logger.info("\n📦 Setting up COCO128-Seg dataset...")
+    data_path = setup_coco128_seg()
     logger.info(f"   Using: {data_path}")
 
-    # Setup results directory
     args.output.parent.mkdir(parents=True, exist_ok=True)
     progress_file = args.output.parent / (args.output.stem.replace("_final", "") + "_progress.json")
     final_file = args.output
 
-    # Run benchmarks
     logger.info(f"\n🏃 Running training benchmarks for models: {args.models}")
     logger.info(f"   Epochs: {args.epochs}, Batch: {args.batch}, LR: {args.lr}")
     logger.info("-" * 70)
@@ -505,7 +511,7 @@ def main():
     all_results = []
 
     for i, model_size in enumerate(args.models, 1):
-        logger.info(f"\n[{i}/{len(args.models)}] Benchmarking yolo26{model_size}...")
+        logger.info(f"\n[{i}/{len(args.models)}] Benchmarking yolo26{model_size}-seg...")
 
         result = train_model_cpu(
             model_size=model_size,
@@ -518,23 +524,23 @@ def main():
         if result:
             all_results.append(result)
             logger.info(f"  ✅ Completed in {result['training_time_seconds']:.1f}s")
-            logger.info(f"     mAP50: {result['mAP50']:.4f}, mAP50-95: {result['mAP50-95']:.4f}")
+            logger.info(
+                f"     mask mAP50: {result['mAP50_mask']:.4f}, mAP50-95: {result['mAP50-95_mask']:.4f} | "
+                f"box mAP50: {result['mAP50_box']:.4f}, mAP50-95: {result['mAP50-95_box']:.4f}"
+            )
 
-            # Save progress after each model
             save_progress(all_results, progress_file)
         else:
             logger.error("  ❌ Failed")
 
-        # Clear memory between models
         clear_memory()
 
-    # Save final results
     logger.info("\n" + "=" * 70)
     logger.info("📊 Final Results")
     logger.info("=" * 70)
 
     final_output = {
-        "benchmark": "yolo26_cpu_training",
+        "benchmark": "yolo26_seg_cpu_training",
         "timestamp": datetime.now().isoformat(),
         "device_info": device_info,
         "config": {
@@ -551,24 +557,26 @@ def main():
 
     logger.info(f"\n✅ Results saved to: {final_file}")
 
-    # Print summary table
     if all_results:
-        logger.info("\n" + "-" * 70)
+        logger.info("\n" + "-" * 120)
         logger.info(
-            f"{'Model':<12} {'Time (s)':<12} {'s/epoch':<12} {'mAP50':<12} {'mAP50-95':<12}"
+            f"{'Model':<16} {'Time (s)':<10} {'s/epoch':<10} "
+            f"{'mAP50 mask':<12} {'mAP50-95 mask':<14} {'mAP50 box':<12} {'mAP50-95 box':<14}"
         )
-        logger.info("-" * 70)
+        logger.info("-" * 120)
         for r in all_results:
             logger.info(
-                f"{r['model']:<12} "
-                f"{r['training_time_seconds']:<12.1f} "
-                f"{r['time_per_epoch_seconds']:<12.2f} "
-                f"{r['mAP50']:<12.4f} "
-                f"{r['mAP50-95']:<12.4f}"
+                f"{r['model']:<16} "
+                f"{r['training_time_seconds']:<10.1f} "
+                f"{r['time_per_epoch_seconds']:<10.2f} "
+                f"{r['mAP50_mask']:<12.4f} "
+                f"{r['mAP50-95_mask']:<14.4f} "
+                f"{r['mAP50_box']:<12.4f} "
+                f"{r['mAP50-95_box']:<14.4f}"
             )
-        logger.info("-" * 70)
+        logger.info("-" * 120)
 
-    logger.info("\n✨ PyTorch CPU training benchmark complete!")
+    logger.info("\n✨ PyTorch CPU segmentation training benchmark complete!")
 
 
 if __name__ == "__main__":

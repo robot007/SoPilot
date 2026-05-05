@@ -15,6 +15,7 @@ YOLO26 is the latest generation of the [YOLO](https://docs.ultralytics.com/model
 - [Highlights](#highlights)
 - [Validation Results](#validation-results-coco-val2017-5000-images)
 - [Tracking Results](#tracking-results-mot17-bytetrack) ![new](https://img.shields.io/badge/NEW-blue)
+- [Segmentation Results](#segmentation-results-coco-val2017-5000-images) ![new](https://img.shields.io/badge/NEW-blue)
 - [Performance](#performance)
 - [Requirements](#requirements)
 - [Project Structure](#project-structure)
@@ -22,11 +23,16 @@ YOLO26 is the latest generation of the [YOLO](https://docs.ultralytics.com/model
 - [Quick Start: Training](#quick-start-training)
 - [Quick Start: Tracking](#quick-start-tracking) ![new](https://img.shields.io/badge/NEW-blue)
 - [Quick Start: Tracking Training](#quick-start-tracking-training) ![new](https://img.shields.io/badge/NEW-blue)
+- [Quick Start: Segmentation](#quick-start-segmentation) ![new](https://img.shields.io/badge/NEW-blue)
+- [Quick Start: Segmentation Training](#quick-start-segmentation-training) ![new](https://img.shields.io/badge/NEW-blue)
 - [Full Setup](#full-setup)
 - [Inference Benchmarking](#inference-benchmarking)
 - [COCO val2017 Validation](#coco-val2017-validation-map)
 - [Training Benchmarking](#training-benchmarking)
 - [MOT17 Tracking Evaluation](#mot17-tracking-evaluation) ![new](https://img.shields.io/badge/NEW-blue)
+- [Segmentation Inference Benchmarking](#segmentation-inference-benchmarking) ![new](https://img.shields.io/badge/NEW-blue)
+- [COCO val2017 Segmentation Validation](#coco-val2017-segmentation-validation-map) ![new](https://img.shields.io/badge/NEW-blue)
+- [Segmentation Training Benchmarking](#segmentation-training-benchmarking) ![new](https://img.shields.io/badge/NEW-blue)
 - [Architecture](#architecture)
 - [Contributing](#contributing)
 - [License](#license)
@@ -38,7 +44,8 @@ YOLO26 is the latest generation of the [YOLO](https://docs.ultralytics.com/model
 - **End-to-End Detection** — NMS-free detection with one-to-one matching
 - **Full Training Pipeline** — MuSGD optimizer, EMA, warmup, LR scheduling
 - **Official-Matching Accuracy** — COCO val2017 mAP with most models within 0.2% and a maximum deviation of 0.5%.
-- **Multi-Object Tracking** — ByteTrack and BoT-SORT trackers with pure-MLX Kalman filters, MOT17 evaluation support ![new](https://img.shields.io/badge/NEW-blue)
+- **Multi-Object Tracking** — ByteTrack and BoT-SORT trackers with pure-MLX Kalman filters, MOT17 evaluation support
+- **Instance Segmentation** — Segment26 head with multi-scale Proto26, mask mAP matching official results ![new](https://img.shields.io/badge/NEW-blue)
 
 ## Validation Results (COCO val2017, 5000 images)
 
@@ -62,17 +69,31 @@ Evaluated on MOT17-09-SDP sequence (525 frames) with ByteTrack tracker on **Appl
 | yolo26l | **48.5** | 42.2 | 53.5 | 8.8 | 8.9 | 1.6 | **5.5×** |
 | yolo26x | **38.7** | 35.1 | 52.5 | **4.7** | 3.9 | 1.0 | **4.7×** |
 
+## Segmentation Results (COCO val2017, 5000 images) ![new](https://img.shields.io/badge/NEW-blue)
+
+| Model | MLX mAP<sup>mask</sup> | Official mAP<sup>mask</sup> | MLX mAP<sup>box</sup> | Official mAP<sup>box</sup> | FPS |
+|-------|------------------------|-------------------------------|------------------------|-------------------------------|-----|
+| yolo26n-seg | **33.6** | 33.9 | **39.5** | 39.6 | 63.7 |
+| yolo26s-seg | **39.7** | 40.0 | **47.2** | 47.3 | 46.8 |
+| yolo26m-seg | **43.7** | 44.1 | **52.1** | 52.5 | 23.4 |
+| yolo26l-seg | **45.2** | 45.5 | **54.2** | 54.4 | 21.0 |
+| yolo26x-seg | **46.6** | 47.0 | **56.2** | 56.5 | 12.5 |
+
 ## Performance
 
-All benchmarks were run on an **Apple M4 Pro** with macOS 26.3.1 and Python 3.14.3. YOLO26 MLX delivers significant speedups over PyTorch on Apple Silicon. For inference, MLX is up to **2.07× faster** than PyTorch MPS (yolo26n: 170.6 vs 82.6 FPS) and up to **3.56× faster** than PyTorch CPU. For training (COCO128, 10 epochs), MLX is up to **2.65× faster** than MPS (yolo26n: 64.1s vs 169.8s) and up to **3.99× faster** than CPU. For tracking (MOT17, imgsz=1440), MLX matches or exceeds PyTorch MPS speed (faster for n, m, x; tied for s, l), while both are **4.5–5.5× faster** than PyTorch CPU. Smaller models benefit the most from MLX's Metal-optimized compute graph and `mx.compile` JIT, while larger models converge toward parity as the workload becomes compute-bound.
+All benchmarks were run on an **Apple M4 Pro** with macOS 26.3.1 and Python 3.14.3. YOLO26 MLX delivers significant speedups over PyTorch on Apple Silicon. For inference, MLX is up to **2.07× faster** than PyTorch MPS (yolo26n: 170.6 vs 82.6 FPS) and up to **3.56× faster** than PyTorch CPU. For training (COCO128, 10 epochs), MLX is up to **2.65× faster** than MPS (yolo26n: 64.1s vs 169.8s) and up to **3.99× faster** than CPU. For tracking (MOT17, imgsz=1440), MLX matches or exceeds PyTorch MPS speed (faster for n, m, x; tied for s, l), while both are **4.5–5.5× faster** than PyTorch CPU. For segmentation (COCO val2017 + COCO128-Seg, imgsz=640), MLX matches official mask mAP within **0.3–0.4 pp** and is **1.00×–1.39× faster than MPS** for inference and **1.25×–3.31× faster than MPS** for training. Smaller models benefit the most from MLX's Metal-optimized compute graph and `mx.compile` JIT, while larger models converge toward parity as the workload becomes compute-bound.
 
 ![Speedup Comparison](assets/yolo26_speedup.png)
 
-![new](https://img.shields.io/badge/NEW-blue) MLX matches or exceeds PyTorch MPS tracking speed at imgsz=1440. MLX is faster for n, m, and x models; tied with MPS for s and l. Both are **4.5–5.5× faster** than PyTorch CPU. Tracking overhead is ~3–5 ms/frame thanks to batched Kalman updates and batch-precomputed coordinates. FPS numbers reflect wall-clock throughput; expect ~10% run-to-run variance on Apple Silicon.
+MLX matches or exceeds PyTorch MPS tracking speed at imgsz=1440. MLX is faster for n, m, and x models; tied with MPS for s and l. Both are **4.5–5.5× faster** than PyTorch CPU. Tracking overhead is ~3–5 ms/frame thanks to batched Kalman updates and batch-precomputed coordinates. FPS numbers reflect wall-clock throughput; expect ~10% run-to-run variance on Apple Silicon.
 
 ![Tracking FPS Comparison](assets/yolo26_tracking_fps.png)
 
 ![Tracking Speedup](assets/yolo26_tracking_speedup.png)
+
+![new](https://img.shields.io/badge/NEW-blue) For segmentation, MLX matches official Ultralytics mask mAP within **0.3–0.4 pp** and box mAP within **0.1–0.4 pp** on COCO val2017 (5,000 images), evaluated with `pycocotools` at original-image resolution (RLE-encoded predictions) — the same methodology Ultralytics uses for its published numbers (`model.val(save_json=True)` → `process_mask_native` + pycocotools). For inference, MLX is faster than (or tied with) PyTorch MPS across all 5 model sizes — up to **1.39× faster** end-to-end (yolo26n-seg: 63.7 vs 45.7 FPS) and up to **4.67× faster** than PyTorch CPU (yolo26x-seg: 12.5 vs 2.7 FPS); forward-pass-only timings are MLX-favorable on every size including m-seg (35.5 ms vs 40.3 ms, 1.14×). For training (COCO128-Seg, 10 epochs, batch=4), MLX is the fastest backend on every size — **1.25×–3.31× faster than PyTorch MPS** and **3.47×–3.76× faster than PyTorch CPU**. See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for the full per-model breakdown.
+
+![Segmentation Speedup](assets/yolo26_seg_speedup.png)
 
 ## Requirements
 
@@ -86,21 +107,29 @@ All benchmarks were run on an **Apple M4 Pro** with macOS 26.3.1 and Python 3.14
 yolo-mlx/
 ├── src/yolo26mlx/                 # Core MLX package
 │   ├── cfg/                       # Model, dataset, and tracker YAML configs
+│   │   ├── models/26/yolo26-seg.yaml  # Segmentation model architecture
+│   │   └── datasets/coco128-seg.yaml  # COCO128-Seg dataset config
 │   ├── converters/                # PyTorch -> MLX weight converter
-│   ├── data/                      # Data loading and dataset helpers
+│   ├── data/                      # Data loading, COCODataset (detection + segmentation)
 │   ├── engine/                    # YOLO, Predictor, Trainer, Validator, TrackerManager, Results
-│   ├── nn/                        # Network blocks and task/model builders
+│   ├── nn/                        # Network blocks: Detect, Segment26, Proto26, model builder
 │   ├── optim/                     # MuSGD optimizer
 │   ├── trackers/                  # ByteTrack, BoT-SORT, Kalman filters, matching
-│   └── utils/                     # Losses, ops, TAL, metrics, MOT metrics, video I/O
+│   └── utils/                     # Losses (v8SegmentationLoss), ops, TAL, metrics, video I/O
 ├── scripts/                       # Benchmark/eval/download utilities
 ├── configs/                       # Dataset configs used by scripts
 ├── tests/                         # Unit/integration tests
 ├── GUIDE_INFERENCE_VALIDATION.md  # Inference + COCO validation guide
+├── GUIDE_SEGMENTATION.md          # Instance segmentation guide
 ├── GUIDE_TRACKING.md              # Tracking guide
 ├── GUIDE_TRAINING_BENCHMARK.md    # Training benchmark guide
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── LICENSE                        # AGPL-3.0
+├── Makefile                       # Common dev tasks (lint, format, test)
 ├── README.md
-└── pyproject.toml
+├── pyproject.toml
+└── webAI-contributor-license-agreement.md
 
 # Runtime folders (created by scripts when needed)
 datasets/
@@ -319,6 +348,99 @@ See [GUIDE_TRACKING.md](GUIDE_TRACKING.md) for the full tracking guide and [GUID
 
 ---
 
+## Quick Start: Segmentation ![new](https://img.shields.io/badge/NEW-blue)
+
+Run instance segmentation on an image in under 5 minutes.
+
+```bash
+# 1. Setup
+cd yolo-mlx
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+pip install -e ".[segment]"
+pip install -e ".[convert]"
+
+# 2. Download a pretrained segmentation model and convert to MLX format
+bash scripts/download_yolo26_models.sh          # downloads all .pt weights to models/
+yolo-mlx converters convert models/yolo26n-seg.pt -o models/yolo26n-seg.npz --verify
+
+# 3. Run segmentation
+mkdir -p images
+curl -L -o images/bus.jpg https://ultralytics.com/images/bus.jpg
+```
+
+```python
+from yolo26mlx import YOLO
+
+model = YOLO("models/yolo26n-seg.npz", task="segment")
+results = model.predict("images/bus.jpg")
+print(results[0])                    # detection + mask summary
+results[0].save()                    # saves annotated image with mask overlays to results/
+```
+
+Access detection and mask data:
+
+```python
+boxes = results[0].boxes             # Boxes object — (N, 6) [x1, y1, x2, y2, conf, cls]
+masks = results[0].masks             # Masks object — (N, H, W) binary masks
+print(f"Detected {len(boxes)} objects with masks of shape {masks.data.shape}")
+```
+
+See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for the full segmentation guide.
+
+---
+
+## Quick Start: Segmentation Training ![new](https://img.shields.io/badge/NEW-blue)
+
+Train a YOLO26-seg model on segmentation data.
+
+```bash
+# 1. Setup (if not done already)
+cd yolo-mlx
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+pip install -e ".[segment]"
+pip install -e ".[convert]"
+
+# 2. Download and convert a pretrained segmentation model as starting weights
+bash scripts/download_yolo26_models.sh
+yolo-mlx converters convert models/yolo26n-seg.pt -o models/yolo26n-seg.npz --verify
+```
+
+```python
+from yolo26mlx import YOLO
+
+# Load pretrained segmentation weights
+model = YOLO("models/yolo26n-seg.npz", task="segment")
+
+# Train on COCO128-Seg (auto-downloaded, ~7 MB, 128 images with polygon labels)
+results = model.train(
+    data="coco128-seg",    # dataset name or path to data YAML
+    epochs=10,
+    batch=4,
+    imgsz=640,
+    project="runs/train",
+    name="my_seg_experiment",
+)
+```
+
+The segmentation training loss includes five components: box, cls, dfl, seg (per-instance mask), and sem (auxiliary semantic segmentation).
+
+To train on a custom dataset, create polygon-annotation labels in YOLO-seg format
+(`class_id x1 y1 x2 y2 ... xN yN` per line, normalized coordinates) and a YAML config
+(see `src/yolo26mlx/cfg/datasets/coco128-seg.yaml` for reference).
+
+**Output locations:**
+
+| Artifact | Path |
+|---|---|
+| Training checkpoints | `runs/train/<name>/best.safetensors`, `last.safetensors` |
+| Downloaded dataset (auto) | `datasets/coco128-seg/` |
+
+See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for the full segmentation guide including evaluation and benchmarking.
+
+---
+
 ## Full Setup
 
 ```bash
@@ -334,11 +456,11 @@ pip install -e .
 # Install tracking dependencies (OpenCV, lap, scipy — required for model.track())
 pip install -e ".[tracking]"
 
+# Install segmentation dependencies (pycocotools, matplotlib, opencv-python — required for model.predict() with task="segment", COCO mask mAP, and chart generation)
+pip install -e ".[segment]"
+
 # Install conversion dependencies (required to convert .pt → .npz weights)
 pip install -e ".[convert]"
-
-# Install COCO evaluation and chart generation tools
-pip install pycocotools matplotlib
 ```
 
 For PyTorch MPS/CPU comparison benchmarks, see [GUIDE_INFERENCE_VALIDATION.md](GUIDE_INFERENCE_VALIDATION.md) and [GUIDE_TRAINING_BENCHMARK.md](GUIDE_TRAINING_BENCHMARK.md).
@@ -431,7 +553,7 @@ python scripts/evaluate_coco_val.py --model yolo26n --data datasets/coco --conf 
 | mAP@0.75 | AP at IoU=0.75 |
 | mAP (small/medium/large) | AP by object size |
 
-**Defaults:** conf=0.001, IoU=0.7, max_det=300, imgsz=640, batch=16 (all overridable via CLI flags)
+**Defaults:** conf=0.001, IoU=0.7, imgsz=640, batch=16 (all overridable via CLI flags). Max detections per image is fixed at 300 (model constant in `Detect`).
 
 ---
 
@@ -457,7 +579,7 @@ python scripts/benchmark_yolo26_training_mlx.py --models n s --epochs 10 --batch
 | mAP@0.5 | Post-training accuracy |
 | Peak memory (MB) | Metal peak memory |
 
-**Training defaults:** 10 epochs, batch=4, COCO128 dataset, lr=0.000119 (MuSGD auto). All overridable via `--epochs`, `--batch`, `--lr`, `--output`.
+**Training defaults:** 10 epochs, batch=4, COCO128 dataset, optimizer=auto (mirrors Ultralytics: AdamW for ≤10k iter, MuSGD otherwise — short COCO128 runs use AdamW), lr=0.000119 (auto-LR formula `0.002 * 5 / (4 + nc)` for nc=80). All overridable via `--epochs`, `--batch`, `--lr`, `--output`.
 
 For PyTorch MPS/CPU training benchmarks and chart generation, see [GUIDE_TRAINING_BENCHMARK.md](GUIDE_TRAINING_BENCHMARK.md).
 
@@ -538,6 +660,106 @@ See [GUIDE_TRACKING.md](GUIDE_TRACKING.md) for full tracking documentation.
 | MOT17-11-SDP | 43.2 | 56.4 | 2,103 | 3,234 | 22 |
 | MOT17-13-SDP | 43.2 | 48.9 | 550 | 6,002 | 58 |
 | **Aggregate** | **42.3** | **49.5** | **16,197** | **48,261** | **379** |
+
+---
+
+## Segmentation Inference Benchmarking ![new](https://img.shields.io/badge/NEW-blue)
+
+Measures MLX segmentation inference latency and throughput.
+
+```bash
+# All models
+python scripts/benchmark_yolo26_seg_inference.py --skip-mps --skip-cpu
+
+# Specific models only
+python scripts/benchmark_yolo26_seg_inference.py --models n s --skip-mps --skip-cpu
+
+# More timed runs for stable results
+python scripts/benchmark_yolo26_seg_inference.py --runs 20 --skip-mps --skip-cpu
+```
+
+**Output:** `results/yolo26_seg_inference_three_way.json` (override with `--output path.json`)
+
+| Metric | Description |
+|--------|-------------|
+| End-to-end latency (ms) | Full predict including pre/post processing and mask generation |
+| Forward-pass-only (ms) | Model inference only |
+| FPS | Throughput (1000 / mean_ms) |
+| Peak memory (MB) | MLX Metal memory usage |
+
+The benchmark script also supports PyTorch MPS and CPU backends for comparison. See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for full multi-backend benchmarking instructions.
+
+**Defaults:** 3 warmup runs, 10 timed runs, 640×640 image size
+
+![Segmentation Inference FPS Comparison](assets/yolo26_seg_inference_fps.png)
+
+---
+
+## COCO val2017 Segmentation Validation (mAP) ![new](https://img.shields.io/badge/NEW-blue)
+
+Evaluates mask and box accuracy on the full COCO val2017 set (5,000 images) using official pycocotools with both `iouType='bbox'` and `iouType='segm'`.
+
+### Setup COCO Dataset
+
+COCO val2017 segmentation uses the same dataset as detection (see [COCO val2017 Validation](#coco-val2017-validation-map) above). The `coco2017labels-segments.zip` archive used in that setup already contains polygon labels required for mask evaluation.
+
+### Run Validation
+
+```bash
+# Single model
+python scripts/evaluate_coco_seg_val.py --model yolo26n-seg --data datasets/coco
+
+# All 5 models
+python scripts/evaluate_coco_seg_val.py --model all --data datasets/coco
+
+# Quick sanity check (100 images)
+python scripts/evaluate_coco_seg_val.py --model yolo26n-seg --data datasets/coco --subset 100
+
+# Custom thresholds
+python scripts/evaluate_coco_seg_val.py --model yolo26n-seg --data datasets/coco --conf 0.001
+```
+
+**Output:** `results/yolo26_seg_coco_val_results.json` (override with `--output dir/`)
+
+| Metric | Description |
+|--------|-------------|
+| mAP<sup>mask</sup>@0.5:0.95 | Primary mask metric |
+| mAP<sup>mask</sup>@0.5 | Mask AP at IoU=0.50 |
+| mAP<sup>box</sup>@0.5:0.95 | Box detection AP (primary) |
+| mAP<sup>box</sup>@0.5 | Box detection AP at IoU=0.50 |
+| mAP (small/medium/large) | AP by object size (mask + box) |
+
+**Defaults:** conf=0.001, imgsz=640, batch=16 (all overridable via CLI flags)
+
+---
+
+## Segmentation Training Benchmarking ![new](https://img.shields.io/badge/NEW-blue)
+
+COCO128-Seg dataset (~7 MB, 128 images with polygon labels) is downloaded automatically on first run.
+
+```bash
+# All models
+python scripts/benchmark_yolo26_seg_training_mlx.py
+
+# Specific models with custom settings
+python scripts/benchmark_yolo26_seg_training_mlx.py --models n s --epochs 10 --batch 4
+```
+
+**Output:** `results/yolo26_seg_mlx_training_final.json` (override with `--output path.json`)
+
+| Metric | Description |
+|--------|-------------|
+| Training time (s) | Total wall-clock time |
+| Time/epoch (s) | Average per epoch |
+| Final loss | End-of-training loss |
+| mAP@0.5 | Post-training accuracy (mask + box) |
+| Peak memory (MB) | Metal peak memory |
+
+**Training defaults:** 10 epochs, batch=4, COCO128-Seg dataset, optimizer=auto (mirrors Ultralytics: AdamW for ≤10k iter, MuSGD otherwise — short COCO128-Seg runs use AdamW), lr=0.000119 (auto-LR formula `0.002 * 5 / (4 + nc)` for nc=80). All overridable via `--epochs`, `--batch`, `--lr`, `--output`.
+
+For PyTorch MPS/CPU segmentation training benchmarks and chart generation, see [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md).
+
+![Segmentation Training Time Comparison](assets/yolo26_seg_training_time.png)
 
 ---
 

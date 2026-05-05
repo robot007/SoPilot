@@ -395,6 +395,101 @@ class DFL(nn.Module):
             return x
 
 
+class Proto(nn.Module):
+    """Mask prototype generation module.
+
+    Reference: ultralytics Proto class in nn/modules/block.py
+
+    MLX specifics:
+    - Uses ConvTranspose2d for learned 2x upsampling (matches Ultralytics)
+    - NHWC format throughout
+    """
+
+    def __init__(self, c1: int, c_: int = 256, c2: int = 32):
+        """Initialize Proto module.
+
+        Args:
+            c1: Input channels
+            c_: Intermediate channels
+            c2: Output channels (number of prototypes)
+        """
+        super().__init__()
+        self.cv1 = Conv(c1, c_, k=3)
+        self.upsample = nn.ConvTranspose2d(c_, c_, kernel_size=2, stride=2, padding=0, bias=True)
+        self.cv2 = Conv(c_, c_, k=3)
+        self.cv3 = Conv(c_, c2)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        """Generate mask prototypes from input feature map.
+
+        Args:
+            x: Feature map (B, H, W, C) in NHWC format.
+
+        Returns:
+            Prototypes (B, H*2, W*2, c2) after learned upsample + convolutions.
+        """
+        return self.cv3(self.cv2(self.upsample(self.cv1(x))))
+
+
+class Proto26(Proto):
+    """YOLO26 multi-scale mask prototype module.
+
+    Reference: ultralytics Proto26 class in nn/modules/block.py
+
+    Fuses P3 + P4 + P5 features before generating prototypes, producing
+    higher-quality masks than single-scale Proto. Includes an auxiliary
+    semantic segmentation head used only during training.
+
+    MLX specifics:
+    - NHWC format: spatial dims at indices 1, 2
+    - Uses mx.repeat for nearest-neighbor upsampling to match P3 spatial size
+    - feat_refine stored as dict for MLX parameter tracking
+    """
+
+    def __init__(self, ch: tuple = (), c_: int = 256, c2: int = 32, nc: int = 80):
+        """Initialize Proto26 with multi-scale feature fusion.
+
+        Args:
+            ch: Tuple of channel sizes from backbone feature maps (P3, P4, P5)
+            c_: Intermediate channels for proto generation
+            c2: Output channels (number of prototypes)
+            nc: Number of classes for auxiliary semantic segmentation head
+        """
+        super().__init__(c_, c_, c2)
+        self.feat_refine = {f"layer{i}": Conv(x, ch[0], k=1) for i, x in enumerate(ch[1:])}
+        self.feat_fuse = Conv(ch[0], c_, k=3)
+        from .head import Sequential
+
+        self.semseg = Sequential(Conv(ch[0], c_, k=3), Conv(c_, c_, k=3), nn.Conv2d(c_, nc, 1))
+
+    def __call__(self, x: list[mx.array]) -> mx.array | tuple:
+        """Generate prototypes from multi-scale features.
+
+        Args:
+            x: List of feature maps [P3, P4, P5] in NHWC format.
+
+        Returns:
+            During inference: prototypes (B, H_proto, W_proto, c2).
+            During training: tuple of (prototypes, semseg_logits).
+        """
+        feat = x[0]
+        for i in range(len(self.feat_refine)):
+            up_feat = self.feat_refine[f"layer{i}"](x[i + 1])
+            sh = feat.shape[1] // up_feat.shape[1]
+            sw = feat.shape[2] // up_feat.shape[2]
+            if sh > 1 or sw > 1:
+                up_feat = mx.repeat(mx.repeat(up_feat, sh, axis=1), sw, axis=2)
+            feat = feat + up_feat
+        p = super().__call__(self.feat_fuse(feat))
+        if self.training and self.semseg is not None:
+            return (p, self.semseg(feat))
+        return p
+
+    def fuse(self):
+        """Strip the semantic segmentation head for inference."""
+        self.semseg = None
+
+
 class C2PSA(nn.Module):
     """C2PSA module with attention mechanism for enhanced feature extraction.
 

@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 webAI, Inc.
 """
-YOLO26 Training Benchmark (Pure MLX)
-=====================================
-Measures training performance for YOLO26 models using native MLX on Apple Silicon.
+YOLO26 Segmentation Training Benchmark (Pure MLX)
+=================================================
+Measures training performance for YOLO26 segmentation models using native MLX on Apple Silicon.
 
 This benchmark uses the pure MLX implementation of YOLO26 for training,
 providing accurate measurements of MLX-native training performance.
 
 Usage:
-    python benchmark_yolo26_training_mlx.py
-    python benchmark_yolo26_training_mlx.py --models n s      # Specific models only
-    python benchmark_yolo26_training_mlx.py --epochs 5        # Fewer epochs
-    python benchmark_yolo26_training_mlx.py --batch 2         # Smaller batch size
-    python benchmark_yolo26_training_mlx.py --output custom.json
+    python benchmark_yolo26_seg_training_mlx.py
+    python benchmark_yolo26_seg_training_mlx.py --models n s      # Specific models only
+    python benchmark_yolo26_seg_training_mlx.py --epochs 5        # Fewer epochs
+    python benchmark_yolo26_seg_training_mlx.py --batch 2           # Smaller batch size
+    python benchmark_yolo26_seg_training_mlx.py --output custom.json
 
 Output:
-    ../results/yolo26_mlx_training_final.json (default, overridable via --output)
+    ../results/yolo26_seg_mlx_training_final.json (default, overridable via --output)
 """
 
 import argparse
@@ -42,10 +42,11 @@ logger = logging.getLogger(__name__)
 EPOCHS = 10
 BATCH_SIZE = 4
 # Default LR matches Ultralytics' ``optimizer='auto'`` short-run choice for
-# nc=80: ``round(0.002 * 5 / (4 + 80), 6) == 0.000119``. The trainer's default
-# ``optimizer='auto'`` consumes this via AdamW (the optimizer Ultralytics
+# nc=80: ``round(0.002 * 5 / (4 + 80), 6) == 0.000119``. With the default
+# ``--optimizer auto`` this is consumed by AdamW (the optimizer Ultralytics
 # itself picks for ``iterations <= 10000``); see ``Trainer._setup_optimizer``.
 LEARNING_RATE = 0.000119
+DEFAULT_OPTIMIZER = "auto"
 MODEL_SIZES = ["n", "s", "m", "l", "x"]
 
 SCRIPT_DIR = Path(__file__).parent
@@ -58,6 +59,32 @@ DATASETS_DIR = PROJECT_DIR / "datasets"
 # =============================================================================
 # Utility Functions
 # =============================================================================
+
+
+def _lr_source_label(lr_used: float) -> str:
+    """Describe whether ``lr_used`` came from the auto formula or the user.
+
+    Returns:
+        ``"auto (Ultralytics build_optimizer, nc=80)"`` when ``lr_used`` matches
+        the script default (which equals ``round(0.002 * 5 / (4 + 80), 6)``);
+        otherwise ``"user-provided (--lr)"``.
+    """
+    return (
+        "auto (Ultralytics build_optimizer, nc=80)"
+        if lr_used == LEARNING_RATE
+        else "user-provided (--lr)"
+    )
+
+
+def _optimizer_label(choice: str) -> str:
+    """Pretty label for the optimizer ``--optimizer`` choice for benchmark JSON."""
+    if choice == "auto":
+        return "auto (AdamW for iter<=10000, MuSGD otherwise — matches Ultralytics)"
+    if choice == "adamw":
+        return "AdamW (forced)"
+    if choice == "musgd":
+        return "MuSGD (Muon + Nesterov SGD, forced)"
+    return choice
 
 
 def get_device_info() -> dict[str, Any]:
@@ -109,16 +136,16 @@ def get_mlx_memory() -> tuple[float, float]:
     return active, peak
 
 
-def setup_coco128() -> Path:
-    """Download and setup COCO128 dataset.
+def setup_coco128_seg() -> Path:
+    """Download and setup COCO128-Seg dataset.
 
     Returns:
         Path to local YAML config file
     """
     search_paths = [
-        DATASETS_DIR / "coco128",
-        Path("datasets") / "coco128",
-        Path.cwd() / "coco128",
+        DATASETS_DIR / "coco128-seg",
+        Path("datasets") / "coco128-seg",
+        Path.cwd() / "coco128-seg",
     ]
 
     dataset_path = None
@@ -128,11 +155,10 @@ def setup_coco128() -> Path:
             break
 
     if dataset_path is None:
-        # Download COCO128 automatically (~7 MB)
-        logger.info("  COCO128 not found locally. Downloading...")
+        logger.info("  COCO128-Seg not found locally. Downloading...")
         DATASETS_DIR.mkdir(parents=True, exist_ok=True)
-        zip_path = DATASETS_DIR / "coco128.zip"
-        url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128.zip"
+        zip_path = DATASETS_DIR / "coco128-seg.zip"
+        url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/coco128-seg.zip"
         try:
             import zipfile
 
@@ -148,24 +174,23 @@ def setup_coco128() -> Path:
             with zipfile.ZipFile(str(zip_path), "r") as zf:
                 zf.extractall(str(DATASETS_DIR))
             zip_path.unlink()
-            dataset_path = DATASETS_DIR / "coco128"
+            dataset_path = DATASETS_DIR / "coco128-seg"
             if not (dataset_path / "images").exists():
-                raise RuntimeError("Extracted archive missing coco128/images/ directory")
-            logger.info(f"  Downloaded COCO128 to: {dataset_path}")
+                raise RuntimeError("Extracted archive missing coco128-seg/images/ directory")
+            logger.info(f"  Downloaded COCO128-Seg to: {dataset_path}")
         except Exception as e:
-            logger.error(f"  ERROR: Failed to download COCO128: {e}")
+            logger.error(f"  ERROR: Failed to download COCO128-Seg: {e}")
             logger.warning("  Training will fall back to synthetic data.")
             if zip_path.exists():
                 zip_path.unlink()
-            return Path("coco128.yaml")
+            return Path("coco128-seg.yaml")
 
-    logger.info(f"  Found COCO128 at: {dataset_path}")
+    logger.info(f"  Found COCO128-Seg at: {dataset_path}")
 
-    # Create local config with absolute paths
-    local_yaml = DATASETS_DIR / "coco128_local.yaml"
+    local_yaml = DATASETS_DIR / "coco128_seg_local.yaml"
     DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    config = f"""# COCO128 Local Configuration
+    config = f"""# COCO128-Seg Local Configuration
 path: {dataset_path.absolute()}
 train: images/train2017
 val: images/train2017
@@ -282,14 +307,26 @@ def save_results(results: dict, output_path: Path, prefix: str = "") -> None:
 # =============================================================================
 
 
+def _validation_map_from_metrics(val_metrics: dict[str, Any]) -> tuple[float, float]:
+    """Prefer mask mAP when present; otherwise use box mAP (same as detection)."""
+    if "mAP50_mask" in val_metrics or "mAP50-95_mask" in val_metrics:
+        map50 = float(val_metrics.get("mAP50_mask", val_metrics.get("mAP50", 0.0)))
+        map50_95 = float(val_metrics.get("mAP50-95_mask", val_metrics.get("mAP50-95", 0.0)))
+    else:
+        map50 = float(val_metrics.get("mAP50", 0.0))
+        map50_95 = float(val_metrics.get("mAP50-95", 0.0))
+    return map50, map50_95
+
+
 def train_model_mlx(
     model_size: str,
     data_path: Path,
     epochs: int,
     batch_size: int,
     lr: float,
+    optimizer_choice: str = DEFAULT_OPTIMIZER,
 ) -> dict[str, Any] | None:
-    """Train YOLO26 model using native MLX and measure time.
+    """Train YOLO26 segmentation model using native MLX and measure time.
 
     Uses the pure MLX implementation of YOLO26 for training with the
     MLX-native trainer and data loader.
@@ -300,21 +337,22 @@ def train_model_mlx(
         epochs: Number of training epochs
         batch_size: Batch size
         lr: Learning rate
+        optimizer_choice: ``"auto"`` (default; mirrors Ultralytics' AdamW vs
+            MuSGD selection), ``"adamw"``, or ``"musgd"``.
 
     Returns:
         Training results dict or None if failed
     """
 
-    model_name = f"yolo26{model_size}"
-    weights_file = MODELS_DIR / f"{model_name}.npz"
-
-    # Check for converted MLX weights
+    model_name = f"yolo26{model_size}-seg"
+    weights_file = MODELS_DIR / f"yolo26{model_size}-seg.npz"
     if not weights_file.exists():
-        logger.warning(f"  ⚠️  MLX weights not found: {weights_file}")
+        weights_file = MODELS_DIR / f"yolo26{model_size}-seg.safetensors"
+    if not weights_file.exists():
+        logger.warning(f"  ⚠️  MLX weights not found for {model_name} (tried .npz and .safetensors)")
         logger.warning(f"  Please run: python convert_weights.py --models {model_size}")
         return None
 
-    # Import YOLO26 MLX model
     try:
         from yolo26mlx import YOLO
         from yolo26mlx.engine.trainer import Trainer
@@ -322,7 +360,6 @@ def train_model_mlx(
         logger.warning(f"  ⚠️  YOLO26 MLX not available: {e}")
         return None
 
-    # Load model
     logger.info(f"  Loading {model_name} from: {weights_file}")
     try:
         model = YOLO(str(weights_file))
@@ -333,30 +370,35 @@ def train_model_mlx(
         traceback.print_exc()
         return None
 
-    # Reset memory stats before training
     clear_mlx_memory()
 
-    # Create trainer
-    trainer = Trainer(model=model.model, task="detect")
+    trainer = Trainer(model=model.model, task="segment")
 
-    # Train using MLX-native trainer
-    logger.info(f"  Training for {epochs} epochs (batch={batch_size}, lr={lr})...")
+    logger.info(
+        f"  Training for {epochs} epochs (batch={batch_size}, lr={lr}, "
+        f"optimizer={optimizer_choice})..."
+    )
     logger.info("  Using pure MLX training with real COCO data")
     start_time = time.perf_counter()
 
     try:
+        # ``val=False`` skips per-epoch validation so the benchmark
+        # measures pure training throughput. Final mAP is computed via
+        # the single ``trainer._validate(...)`` call after training.
         train_results = trainer(
             data=str(data_path),
             epochs=epochs,
             imgsz=640,
             batch=batch_size,
-            patience=epochs + 1,  # Disable early stopping
-            save_period=-1,  # Don't save intermediate checkpoints
+            patience=epochs + 1,
+            save_period=-1,
             project=str(RESULTS_DIR / "mlx_runs"),
             name=model_name,
             exist_ok=True,
-            val=False,  # Disable validation during training (for fair timing comparison)
-            verbose=True,  # Show per-batch training progress
+            lr=lr,
+            optimizer=optimizer_choice,
+            val=False,
+            verbose=True,
         )
     except Exception as e:
         logger.error(f"  ⚠️  Training failed: {e}")
@@ -367,35 +409,53 @@ def train_model_mlx(
 
     training_time = time.perf_counter() - start_time
 
-    # Get memory usage
     _, peak_memory = get_mlx_memory()
 
-    # Run validation separately (same as MPS/CPU scripts)
     logger.info("  Running validation...")
+    val_metrics: dict[str, Any] = {}
     try:
         model.model.eval()
         val_metrics = trainer._validate(batch_size, 640)
-        map50 = val_metrics.get("mAP50", 0.0)
-        map50_95 = val_metrics.get("mAP50-95", 0.0)
+        map50, map50_95 = _validation_map_from_metrics(val_metrics)
     except Exception as e:
         logger.warning(f"  ⚠️  Validation failed: {e}")
         map50, map50_95 = 0.0, 0.0
 
     final_loss = train_results.get("final_loss", 0.0)
 
-    return {
+    map50_mask = float(val_metrics.get("mAP50_mask", 0.0))
+    map5095_mask = float(val_metrics.get("mAP50-95_mask", 0.0))
+    map50_box = float(val_metrics.get("mAP50_box", 0.0))
+    map5095_box = float(val_metrics.get("mAP50-95_box", 0.0))
+
+    result: dict[str, Any] = {
         "model": model_name,
+        "task": "segment",
         "training_time_seconds": round(training_time, 2),
         "time_per_epoch_seconds": round(training_time / epochs, 2),
         "epochs": epochs,
         "batch_size": batch_size,
         "learning_rate": lr,
         "final_loss": round(float(final_loss), 4),
+        # Legacy headline values: keep ``mAP50``/``mAP50-95`` so older
+        # downstream readers keep working. For segmentation these mirror
+        # the mask values via ``Trainer._validate_segment``.
         "mAP50": round(float(map50), 4) if map50 else 0.0,
         "mAP50-95": round(float(map50_95), 4) if map50_95 else 0.0,
         "peak_memory_mb": round(peak_memory, 1),
         "framework": "MLX",
     }
+
+    # Emit explicit mask/box keys when the segmentation validator returned
+    # them so the collect-results script and chart generator can show
+    # apples-to-apples mask mAP next to PyTorch MPS/CPU.
+    if "mAP50_mask" in val_metrics or "mAP50-95_mask" in val_metrics:
+        result["mAP50_mask"] = round(map50_mask, 4)
+        result["mAP50-95_mask"] = round(map5095_mask, 4)
+        result["mAP50_box"] = round(map50_box, 4)
+        result["mAP50-95_box"] = round(map5095_box, 4)
+
+    return result
 
 
 # =============================================================================
@@ -407,11 +467,11 @@ def main():
     """Parse CLI args, set up dataset, train each model with native MLX, and save benchmark results."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    parser = argparse.ArgumentParser(description="YOLO26 MLX Training Benchmark")
+    parser = argparse.ArgumentParser(description="YOLO26 Segmentation MLX Training Benchmark")
     parser.add_argument(
         "--models",
         nargs="+",
-        default=MODEL_SIZES,  # All models: n, s, m, l, x
+        default=MODEL_SIZES,
         choices=MODEL_SIZES,
         help="Model sizes to benchmark (default: all)",
     )
@@ -434,16 +494,26 @@ def main():
         help=f"Learning rate (default: {LEARNING_RATE})",
     )
     parser.add_argument(
+        "--optimizer",
+        choices=["auto", "adamw", "musgd"],
+        default=DEFAULT_OPTIMIZER,
+        help=(
+            "Optimizer choice. 'auto' (default) mirrors Ultralytics' "
+            "optimizer='auto': AdamW for short fine-tune runs (iter <= 10000), "
+            "MuSGD for long from-scratch runs."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
-        default=RESULTS_DIR / "yolo26_mlx_training_final.json",
-        help="Output JSON path (default: results/yolo26_mlx_training_final.json)",
+        default=RESULTS_DIR / "yolo26_seg_mlx_training_final.json",
+        help="Output JSON path (default: results/yolo26_seg_mlx_training_final.json)",
     )
     args = parser.parse_args()
     ensure_runtime_dirs(PROJECT_DIR)
 
     logger.info("=" * 70)
-    logger.info("  YOLO26 MLX Training Benchmark")
+    logger.info("  YOLO26 Segmentation MLX Training Benchmark")
     logger.info("=" * 70)
     logger.info(f"  Models: {', '.join(args.models)}")
     logger.info(f"  Epochs: {args.epochs}")
@@ -452,7 +522,6 @@ def main():
     logger.info("=" * 70)
     logger.info("")
 
-    # Verify MLX is available
     try:
         import mlx.core as mx
 
@@ -462,39 +531,33 @@ def main():
         logger.error("❌ MLX not available. Please install: pip install mlx")
         sys.exit(1)
 
-    # Get device info
     device_info = get_device_info()
     logger.info(f"✅ Platform: {device_info.get('cpu', device_info.get('processor', 'Unknown'))}")
 
-    # Setup dataset
-    logger.info("\n📦 Setting up COCO128 dataset...")
-    data_path = setup_coco128()
+    logger.info("\n📦 Setting up COCO128-Seg dataset...")
+    data_path = setup_coco128_seg()
     logger.info(f"✅ Dataset config: {data_path}")
     logger.info("")
 
-    # Results storage
     results = []
 
-    # Progress file for intermediate saves (derived from output path)
     progress_path = args.output.parent / (args.output.stem.replace("_final", "") + "_progress.json")
 
-    # Run benchmarks for each model size
     for i, size in enumerate(args.models):
-        model_name = f"yolo26{size}"
+        model_name = f"yolo26{size}-seg"
         logger.info(f"\n{'=' * 50}")
         logger.info(f"  [{i + 1}/{len(args.models)}] Training: {model_name}")
         logger.info(f"{'=' * 50}")
 
-        # Clear memory before each run
         clear_mlx_memory()
 
-        # Train and measure
         result = train_model_mlx(
             model_size=size,
             data_path=data_path,
             epochs=args.epochs,
             batch_size=args.batch,
             lr=args.lr,
+            optimizer_choice=args.optimizer,
         )
 
         if result:
@@ -506,15 +569,17 @@ def main():
             logger.info(f"     mAP50: {result['mAP50']:.4f}")
             logger.info(f"     Peak memory: {result['peak_memory_mb']:.1f} MB")
 
-            # Save progress after each model
             progress = {
-                "benchmark": "YOLO26 MLX Training (in progress)",
+                "benchmark": "YOLO26 Segmentation MLX Training (in progress)",
+                "task": "segment",
                 "timestamp": datetime.now().isoformat(),
                 "device_info": device_info,
                 "config": {
                     "epochs": args.epochs,
                     "batch_size": args.batch,
-                    "learning_rate": args.lr,
+                    "learning_rate": float(args.lr),
+                    "learning_rate_source": _lr_source_label(float(args.lr)),
+                    "optimizer": _optimizer_label(args.optimizer),
                     "dataset": str(data_path),
                 },
                 "results": results,
@@ -523,50 +588,44 @@ def main():
         else:
             logger.warning(f"\n  ❌ {model_name} failed")
 
-    # Final summary
     logger.info("\n" + "=" * 70)
     logger.info("  Training Benchmark Summary")
     logger.info("=" * 70)
 
     logger.info(
-        f"\n{'Model':<12} {'Time (s)':<12} {'Time/Epoch':<12} {'mAP50':<10} {'Memory (MB)':<12}"
+        f"\n{'Model':<18} {'Time (s)':<12} {'Time/Epoch':<12} {'mAP50':<10} {'Memory (MB)':<12}"
     )
-    logger.info("-" * 58)
+    logger.info("-" * 64)
 
-    # Create lookup dict from results list
     results_by_model = {r["model"]: r for r in results}
 
     for size in args.models:
-        model_name = f"yolo26{size}"
+        model_name = f"yolo26{size}-seg"
         if model_name in results_by_model:
             r = results_by_model[model_name]
             logger.info(
-                f"{model_name:<12} {r['training_time_seconds']:<12.1f} {r['time_per_epoch_seconds']:<12.1f} {r['mAP50']:<10.4f} {r['peak_memory_mb']:<12.1f}"
+                f"{model_name:<18} {r['training_time_seconds']:<12.1f} {r['time_per_epoch_seconds']:<12.1f} {r['mAP50']:<10.4f} {r['peak_memory_mb']:<12.1f}"
             )
         else:
-            logger.warning(f"{model_name:<12} {'FAILED':<12} {'-':<12} {'-':<10} {'-':<12}")
+            logger.warning(f"{model_name:<18} {'FAILED':<12} {'-':<12} {'-':<10} {'-':<12}")
 
-    logger.info("-" * 58)
+    logger.info("-" * 64)
     logger.info("")
 
-    # Save final results
     lr_used = float(args.lr)
-    lr_source = (
-        "auto (Ultralytics build_optimizer, nc=80)"
-        if lr_used == LEARNING_RATE
-        else "user-provided (--lr)"
-    )
+
     final_output = {
-        "benchmark": "YOLO26 MLX Training (Pure MLX)",
+        "benchmark": "YOLO26 Segmentation MLX Training (Pure MLX)",
+        "task": "segment",
         "timestamp": datetime.now().isoformat(),
         "device_info": device_info,
         "config": {
             "epochs": args.epochs,
             "batch_size": args.batch,
             "learning_rate": lr_used,
-            "learning_rate_source": lr_source,
-            "optimizer": "auto (AdamW for iter<=10000, MuSGD otherwise — matches Ultralytics)",
-            "dataset": "COCO128",
+            "learning_rate_source": _lr_source_label(lr_used),
+            "optimizer": _optimizer_label(args.optimizer),
+            "dataset": "COCO128-Seg",
             "framework": "MLX (native)",
         },
         "results": results,

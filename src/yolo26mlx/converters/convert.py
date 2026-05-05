@@ -134,8 +134,8 @@ CONV_WEIGHT_PATTERNS = [
     r"\.cv[234]\.\d+\.\d+\.conv\.weight$",  # e.g., model.22.cv2.0.0.conv.weight
     r"\.cv[234]\.\d+\.\d+\.weight$",  # e.g., model.22.cv2.0.2.weight (final conv)
     # End-to-end detection head patterns
-    r"\.one2one_cv[23]\.\d+\.\d+\.conv\.weight$",
-    r"\.one2one_cv[23]\.\d+\.\d+\.weight$",
+    r"\.one2one_cv[234]\.\d+\.\d+\.conv\.weight$",
+    r"\.one2one_cv[234]\.\d+\.\d+\.weight$",
     # DFL module (1x1 conv)
     r"\.dfl\.conv\.weight$",
     # Direct nn.Conv2d in ModuleList
@@ -144,6 +144,8 @@ CONV_WEIGHT_PATTERNS = [
     r"\.mlp\.\d+\.conv\.weight$",
     # Proto/Proto26 patterns
     r"\.cv[1-3]\.conv\.weight$",
+    # Proto26 semseg final conv
+    r"\.semseg\.\d+\.weight$",
 ]
 
 # Patterns that indicate ConvTranspose2d weights (need IOHW -> OHWI conversion)
@@ -358,10 +360,12 @@ def convert_yolo26_weights(
                 # Fall through to npz saving
 
         if output_path.suffix == ".npz":
-            # Save as npz
-            # mx.savez expects **kwargs, so we need to convert
-            weight_dict = {name: arr for name, arr in mlx_weights}
-            mx.savez(str(output_path), **weight_dict)
+            # mx.savez is bound through nanobind, which caps **kwargs at 1024.
+            # Larger seg checkpoints (yolo26{l,x}-seg) exceed this with ~1094
+            # weights, so route through np.savez (pure-Python kwargs, identical
+            # .npz archive layout consumed by Module.load_weights).
+            weight_dict = {name: np.array(arr) for name, arr in mlx_weights}
+            np.savez(str(output_path), **weight_dict)
             if verbose:
                 logger.info(f"\nSaved MLX weights to {output_path} (npz)")
 

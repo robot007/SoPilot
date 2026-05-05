@@ -26,6 +26,88 @@ except ImportError:
     _HAS_CV2 = False
 
 
+def polygon2mask(
+    imgsz: tuple[int, int],
+    polygon: np.ndarray | list[np.ndarray],
+    downsample_ratio: int = 1,
+) -> np.ndarray:
+    """Rasterize polygon contour(s) to a binary mask.
+
+    Reference: ultralytics data/utils.py polygon2mask
+
+    Args:
+        imgsz: Image size as (height, width).
+        polygon: Single polygon (K, 2) or list of polygon arrays for
+                 multi-part annotations (e.g. occluded objects).
+        downsample_ratio: Downsample factor for the output mask.
+
+    Returns:
+        Binary mask of shape (H // downsample_ratio, W // downsample_ratio).
+    """
+    if not _HAS_CV2:
+        h, w = imgsz[0] // downsample_ratio, imgsz[1] // downsample_ratio
+        return np.zeros((h, w), dtype=np.uint8)
+
+    mask = np.zeros(imgsz, dtype=np.uint8)
+    if isinstance(polygon, list):
+        contours = [np.array(p, dtype=np.int32) for p in polygon]
+    else:
+        contours = [np.array(polygon, dtype=np.int32)]
+    cv2.fillPoly(mask, contours, color=1)
+
+    if downsample_ratio > 1:
+        h, w = imgsz[0] // downsample_ratio, imgsz[1] // downsample_ratio
+        mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+    return mask
+
+
+def polygons2masks_overlap(
+    imgsz: tuple[int, int],
+    segments: list[np.ndarray],
+    downsample_ratio: int = 1,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build an overlap mask from multiple polygon segments.
+
+    Segments must be pre-sorted by descending area by the caller.
+    Pixels are painted with 1-based instance IDs; later (smaller) instances
+    overwrite earlier (larger) ones in overlap regions.
+
+    Reference: ultralytics data/utils.py polygons2masks_overlap
+
+    Args:
+        imgsz: Image size as (height, width).
+        segments: List of polygon arrays, each (K, 2) in pixel coords,
+                  pre-sorted by descending area.
+        downsample_ratio: Downsample factor for the output mask.
+
+    Returns:
+        Tuple of:
+        - Overlap mask (H // ds, W // ds) with 1-based instance IDs.
+        - Sort index array mapping output instance ID-1 to input index
+          (identity when pre-sorted).
+    """
+    h, w = imgsz[0] // downsample_ratio, imgsz[1] // downsample_ratio
+    masks = np.zeros((h, w), dtype=np.int32)
+
+    areas = []
+    ms = []
+    for seg in segments:
+        m = polygon2mask(imgsz, seg, downsample_ratio)
+        ms.append(m)
+        areas.append(float(m.sum()))
+
+    areas = np.array(areas)
+    index = np.argsort(-areas)
+    ms_sorted = [ms[i] for i in index]
+
+    for i, m in enumerate(ms_sorted):
+        mask = m * (i + 1)
+        masks = masks + mask
+        masks = np.clip(masks, a_min=0, a_max=i + 1)
+
+    return masks, index
+
+
 class COCODataset:
     """COCO dataset loader for YOLO26 MLX validation.
 
@@ -129,6 +211,8 @@ class COCODataset:
         split: str = "val2017",
         img_size: int = 640,
         augment: bool = False,
+        task: str = "detect",
+        mask_ratio: int = 4,
     ):
         """Initialize COCO dataset.
 
@@ -137,11 +221,15 @@ class COCODataset:
             split: Dataset split ('val2017' or 'train2017')
             img_size: Target image size for preprocessing
             augment: Apply training augmentations (HSV jitter, horizontal flip)
+            task: Task type ('detect' or 'segment')
+            mask_ratio: Downsample ratio for GT masks (default 4, giving 160x160 for 640 input)
         """
         self.root = Path(root)
         self.split = split
         self.img_size = img_size
         self.augment = augment
+        self.task = task
+        self.mask_ratio = mask_ratio
 
         # Paths
         self.images_dir = self.root / "images" / split
@@ -229,7 +317,9 @@ class COCODataset:
     def _load_yolo_labels(self, img_id: int, label_path: Path):
         """Load YOLO format labels for an image.
 
-        YOLO format: class_id x_center y_center width height (normalized 0-1)
+        Supports both detection and segmentation formats:
+        - Detection: cls cx cy w h (5 values)
+        - Segmentation: cls x1 y1 x2 y2 x3 y3 ... (>5 values, polygon vertices)
 
         Args:
             img_id: Image ID
@@ -240,32 +330,56 @@ class COCODataset:
         with open(label_path) as f:
             for line in f:
                 parts = line.strip().split()
-                if len(parts) >= 5:
-                    class_id = int(parts[0])
+                if len(parts) < 5:
+                    continue
+
+                class_id = int(parts[0])
+
+                if len(parts) == 5:
+                    # Detection format: cls cx cy w h
                     x_center = float(parts[1])
                     y_center = float(parts[2])
                     width = float(parts[3])
                     height = float(parts[4])
 
-                    # Store as normalized [x, y, w, h] for top-left corner
-                    # These are NORMALIZED to [0,1], not pixel coordinates
-                    # We'll convert to proper pixel coords in __getitem__ using actual image size
                     x = x_center - width / 2
                     y = y_center - height / 2
                     w = width
                     h = height
 
-                    # For YOLO format, class_id is already the 0-79 index.
-                    # Mark as yolo_format so __getitem__ won't remap through COCO IDs.
                     annotations.append(
                         {
-                            "bbox": [x, y, w, h],  # Normalized [0-1]
-                            "bbox_normalized": True,  # Flag to indicate normalized coords
-                            "yolo_format": True,  # class_id is already 0-based index
+                            "bbox": [x, y, w, h],
+                            "bbox_normalized": True,
+                            "yolo_format": True,
                             "category_id": class_id,
-                            "area": w * h,  # Normalized area (will be scaled later)
+                            "area": w * h,
                             "iscrowd": 0,
                             "image_id": img_id,
+                        }
+                    )
+                else:
+                    # Segmentation format: cls x1 y1 x2 y2 x3 y3 ...
+                    coords = [float(v) for v in parts[1:]]
+                    if len(coords) < 6:
+                        continue
+                    segments = np.array(coords, dtype=np.float32).reshape(-1, 2)
+
+                    x_min, y_min = segments.min(axis=0)
+                    x_max, y_max = segments.max(axis=0)
+                    w = x_max - x_min
+                    h = y_max - y_min
+
+                    annotations.append(
+                        {
+                            "bbox": [x_min, y_min, w, h],
+                            "bbox_normalized": True,
+                            "yolo_format": True,
+                            "category_id": class_id,
+                            "area": w * h,
+                            "iscrowd": 0,
+                            "image_id": img_id,
+                            "segments": coords,
                         }
                     )
 
@@ -303,6 +417,12 @@ class COCODataset:
 
         # Get annotations (before augmentation so we can flip boxes)
         anns = self.annotations.get(img_id, [])
+
+        # For segmentation, sort annotations by area (descending) so that
+        # overlap map instance IDs match annotation indices after re-sorting.
+        # Matches Ultralytics: instances = instances[sorted_idx]
+        if self.task == "segment" and len(anns) > 1:
+            anns = sorted(anns, key=lambda a: a.get("area", 0), reverse=True)
 
         # Convert annotations to array format
         boxes = []
@@ -370,6 +490,12 @@ class COCODataset:
             areas.append(ann.get("area", w * h))
             iscrowd.append(ann.get("iscrowd", 0))
 
+        # Collect segments (polygon vertices) for segmentation task
+        seg_list = []
+        for ann in anns:
+            seg_coords = self._extract_segments(ann, orig_w, orig_h, ratio, pad)
+            seg_list.append(seg_coords)
+
         # Create annotation dict
         annotation = {
             "image_id": img_id,
@@ -390,12 +516,19 @@ class COCODataset:
             "pad": pad,
         }
 
+        if self.task == "segment":
+            annotation["segments"] = seg_list
+
         # Apply augmentations (training only)
         # Ported from ultralytics RandomPerspective + RandomHSV + RandomFlip
         if self.augment:
             img_np, annotation = self._random_affine(img_np, annotation, scale=0.5, translate=0.1)
             img_np = self._augment_hsv(img_np, hgain=0.015, sgain=0.7, vgain=0.4)
             img_np, annotation = self._random_fliplr(img_np, annotation, p=0.5)
+
+        # Rasterize masks + sem_masks and re-sort annotations (for segmentation task)
+        if self.task == "segment":
+            self._rasterize_masks(annotation)
 
         # Convert to MLX array (float32, normalized to [0, 1])
         img_array = mx.array(img_np.astype(np.float32) / 255.0)
@@ -501,7 +634,41 @@ class COCODataset:
             if "iscrowd" in annotation:
                 annotation["iscrowd"] = annotation["iscrowd"][keep]
 
+            # Transform polygon vertices with same affine matrix
+            if "segments" in annotation:
+                new_segments = []
+                for idx, seg in enumerate(annotation["segments"]):
+                    if not keep[idx]:
+                        continue
+                    if seg is None:
+                        new_segments.append(seg)
+                        continue
+                    new_segments.append(self._transform_seg_affine(seg, w, h, M))
+                annotation["segments"] = new_segments
+
         return img, annotation
+
+    @staticmethod
+    def _transform_seg_affine(
+        seg: list[np.ndarray] | np.ndarray,
+        w: int,
+        h: int,
+        M: np.ndarray,
+    ) -> list[np.ndarray] | np.ndarray:
+        """Apply affine transform to segment polygon(s)."""
+        if isinstance(seg, list):
+            return [COCODataset._transform_seg_affine(part, w, h, M) for part in seg]
+        if len(seg) < 3:
+            return seg
+        pts = seg.copy()
+        pts[:, 0] *= w
+        pts[:, 1] *= h
+        ones = np.ones((len(pts), 1), dtype=np.float32)
+        pts_h = np.hstack([pts, ones])
+        transformed = (pts_h @ M.T)[:, :2]
+        transformed[:, 0] = np.clip(transformed[:, 0], 0, w) / w
+        transformed[:, 1] = np.clip(transformed[:, 1], 0, h) / h
+        return transformed
 
     def _augment_hsv(
         self, img: np.ndarray, hgain: float = 0.015, sgain: float = 0.7, vgain: float = 0.4
@@ -553,12 +720,199 @@ class COCODataset:
             img = np.ascontiguousarray(np.fliplr(img))
             boxes = annotation["boxes"]
             if len(boxes) > 0:
-                # Flip xyxy boxes horizontally: new_x1 = 1 - old_x2, new_x2 = 1 - old_x1
                 boxes_flipped = boxes.copy()
-                boxes_flipped[:, 0] = 1.0 - boxes[:, 2]  # new x1 = 1 - old x2
-                boxes_flipped[:, 2] = 1.0 - boxes[:, 0]  # new x2 = 1 - old x1
+                boxes_flipped[:, 0] = 1.0 - boxes[:, 2]
+                boxes_flipped[:, 2] = 1.0 - boxes[:, 0]
                 annotation["boxes"] = boxes_flipped
+
+            # Flip polygon vertices horizontally
+            if "segments" in annotation:
+                annotation["segments"] = [
+                    self._flip_segments_lr(seg) for seg in annotation["segments"]
+                ]
         return img, annotation
+
+    @staticmethod
+    def _flip_segments_lr(
+        seg: list[np.ndarray] | np.ndarray | None,
+    ) -> list[np.ndarray] | np.ndarray | None:
+        """Flip polygon vertices horizontally (x = 1 - x) for normalized coords."""
+        if seg is None:
+            return seg
+        if isinstance(seg, list):
+            return [COCODataset._flip_segments_lr(part) for part in seg]
+        if len(seg) < 3:
+            return seg
+        flipped = seg.copy()
+        flipped[:, 0] = 1.0 - flipped[:, 0]
+        return flipped
+
+    def _extract_segments(
+        self, ann: dict, orig_w: int, orig_h: int, ratio: float, pad: tuple[float, float]
+    ) -> list[np.ndarray] | None:
+        """Extract polygon vertices from an annotation and transform to letterboxed space.
+
+        Handles YOLO-seg format (normalized, stored in "segments" key),
+        COCO JSON polygon format (pixel coords, stored in "segmentation" key),
+        and COCO RLE format (decoded via pycocotools if available).
+
+        Returns a list of polygon arrays so that multi-part annotations
+        (e.g. occluded objects with separate polygon regions) are fully
+        represented.
+
+        Args:
+            ann: Single annotation dict.
+            orig_w: Original image width.
+            orig_h: Original image height.
+            ratio: Letterbox scale ratio.
+            pad: Letterbox padding (pad_x, pad_y).
+
+        Returns:
+            List of (K_i, 2) polygon arrays in letterboxed normalized [0, 1]
+            coords, or None if no segmentation is available.
+        """
+        if "segments" in ann:
+            coords = ann["segments"]
+            if isinstance(coords, list) and len(coords) >= 6:
+                segments = np.array(coords, dtype=np.float32).reshape(-1, 2)
+            else:
+                return None
+            px = segments[:, 0] * orig_w
+            py = segments[:, 1] * orig_h
+            segments[:, 0] = (px * ratio + pad[0]) / self.img_size
+            segments[:, 1] = (py * ratio + pad[1]) / self.img_size
+            return [np.clip(segments, 0, 1)]
+
+        if "segmentation" in ann:
+            seg = ann["segmentation"]
+
+            if isinstance(seg, dict):
+                # RLE format — decode to binary mask, then extract contours
+                try:
+                    from pycocotools import mask as mask_util
+
+                    rle = seg
+                    if isinstance(rle.get("counts"), list):
+                        # Uncompressed RLE → compress first
+                        rle = mask_util.frPyObjects(rle, rle["size"][0], rle["size"][1])
+                    rle_mask = mask_util.decode(rle)  # (H, W) uint8
+                    if _HAS_CV2 and rle_mask.any():
+                        contours, _ = cv2.findContours(
+                            rle_mask,
+                            cv2.RETR_EXTERNAL,
+                            cv2.CHAIN_APPROX_SIMPLE,
+                        )
+                        parts = []
+                        for c in contours:
+                            pts = c.squeeze().astype(np.float32)
+                            if pts.ndim < 2 or len(pts) < 3:
+                                continue
+                            pts[:, 0] = (pts[:, 0] * ratio + pad[0]) / self.img_size
+                            pts[:, 1] = (pts[:, 1] * ratio + pad[1]) / self.img_size
+                            parts.append(np.clip(pts, 0, 1))
+                        return parts if parts else None
+                except ImportError:
+                    pass
+                return None
+
+            if isinstance(seg, list) and len(seg) > 0:
+                # COCO polygon format: list of flat coord lists (pixel coords).
+                # Each element is one polygon part — include ALL of them.
+                parts = []
+                for poly_flat in seg:
+                    if not isinstance(poly_flat, list) or len(poly_flat) < 6:
+                        continue
+                    poly = np.array(poly_flat, dtype=np.float32).reshape(-1, 2)
+                    poly[:, 0] = (poly[:, 0] * ratio + pad[0]) / self.img_size
+                    poly[:, 1] = (poly[:, 1] * ratio + pad[1]) / self.img_size
+                    parts.append(np.clip(poly, 0, 1))
+                return parts if parts else None
+
+        return None
+
+    def _rasterize_masks(self, annotation: dict) -> None:
+        """Rasterize polygon segments into an overlap mask and semantic mask.
+
+        Sets annotation["masks"] (overlap map) and annotation["sem_masks"]
+        (per-pixel class index) at reduced resolution.
+
+        After rasterization, annotations (boxes, labels, segments, etc.)
+        are re-sorted to match the overlap map's instance ID order, following
+        the Ultralytics convention: instances = instances[sorted_idx].
+
+        Args:
+            annotation: Annotation dict with "segments" and "labels".
+                        Modified in place.
+        """
+        seg_list = annotation.get("segments", [])
+        labels = annotation.get("labels", np.zeros(0, dtype=np.int64))
+        mask_h = self.img_size // self.mask_ratio
+        mask_w = self.img_size // self.mask_ratio
+
+        # Build pixel-coord polygons, tracking which annotations have valid segments.
+        # Each entry in valid_segs is a list of (K_i, 2) arrays (one or more
+        # polygon parts per annotation, supporting multi-part COCO objects).
+        valid_indices = []
+        valid_segs = []
+        for i, seg in enumerate(seg_list):
+            if seg is None:
+                continue
+            if isinstance(seg, list) and len(seg) > 0 and isinstance(seg[0], np.ndarray):
+                parts = []
+                for part in seg:
+                    if part is not None and len(part) >= 3:
+                        pp = part.copy()
+                        pp[:, 0] *= mask_w
+                        pp[:, 1] *= mask_h
+                        parts.append(pp)
+                if parts:
+                    valid_segs.append(parts)
+                    valid_indices.append(i)
+            elif isinstance(seg, np.ndarray) and len(seg) >= 3:
+                poly_px = seg.copy()
+                poly_px[:, 0] *= mask_w
+                poly_px[:, 1] *= mask_h
+                valid_segs.append([poly_px])
+                valid_indices.append(i)
+
+        if not valid_segs:
+            annotation["masks"] = np.zeros((mask_h, mask_w), dtype=np.int32)
+            annotation["sem_masks"] = np.zeros((mask_h, mask_w), dtype=np.int64)
+            return
+
+        masks, sort_idx = polygons2masks_overlap((mask_h, mask_w), valid_segs, downsample_ratio=1)
+
+        # Re-sort annotations to match overlap map instance ID order.
+        # sort_idx maps from sorted position → original valid_segs index.
+        # full_order maps from sorted position → original annotation index.
+        full_order = np.array([valid_indices[j] for j in sort_idx])
+
+        # Rebuild annotation arrays in sorted order, appending any
+        # annotations without segments at the end.
+        n_total = len(seg_list) if len(seg_list) == len(labels) else len(labels)
+        has_seg = set(full_order.tolist())
+        no_seg = [i for i in range(n_total) if i not in has_seg]
+        reorder = np.concatenate([full_order, np.array(no_seg, dtype=np.int64)])
+
+        if len(reorder) == len(labels):
+            annotation["labels"] = labels[reorder]
+            annotation["boxes"] = annotation["boxes"][reorder]
+            if "areas" in annotation:
+                annotation["areas"] = annotation["areas"][reorder]
+            if "iscrowd" in annotation:
+                annotation["iscrowd"] = annotation["iscrowd"][reorder]
+            new_segs = [seg_list[j] if j < len(seg_list) else None for j in reorder]
+            annotation["segments"] = new_segs
+
+        # Build semantic mask: per-pixel class index
+        sem_mask = np.zeros((mask_h, mask_w), dtype=np.int64)
+        sorted_labels = annotation["labels"]
+        for inst_id in range(1, int(masks.max()) + 1):
+            if inst_id - 1 < len(sorted_labels):
+                sem_mask[masks == inst_id] = int(sorted_labels[inst_id - 1])
+
+        annotation["masks"] = masks
+        annotation["sem_masks"] = sem_mask
 
     def _letterbox(
         self, image: Image.Image, target_size: int, color: tuple[int, int, int] = (114, 114, 114)
