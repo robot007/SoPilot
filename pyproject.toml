@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yolo-mlx"
-version = "0.3.0"
+version = "0.3.1"
 description = "YOLO26 implementation using Apple MLX framework"
 readme = "README.md"
 license = "AGPL-3.0-only"

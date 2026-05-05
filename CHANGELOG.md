@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-05-05
+
+- **Trainer**: Auto-downloaded datasets (`coco128`, `coco128-seg`) now land at `./datasets/<name>/` (CWD-relative) instead of inside the venv's `lib/python3.10/datasets/` — matches the README for both editable and PyPI installs
+
 ## 0.3.0 — 2026-05-05
 
 - **Segmentation**: Native MLX instance segmentation (`Segment26` head + `Proto26`) — inference, training, and COCO val2017 mAP eval

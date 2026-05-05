@@ -726,9 +726,12 @@ class Trainer:
                     resolved = True
                     break
 
-            # Auto-download if dataset not found locally
+            # Auto-download if dataset not found locally.
+            # Resolve target relative to the user's CWD so the dataset lands at
+            # ``./datasets/<name>/`` (matches the README) regardless of whether
+            # yolo-mlx is installed editable from the repo or as a wheel from PyPI.
             if not resolved and dataset_name in self._DATASET_URLS:
-                datasets_dir = Path(__file__).parent.parent.parent.parent / "datasets"
+                datasets_dir = Path.cwd() / "datasets"
                 downloaded = self._download_dataset(dataset_name, datasets_dir)
                 if downloaded is not None:
                     dataset_path = downloaded
