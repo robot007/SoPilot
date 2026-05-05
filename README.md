@@ -42,7 +42,7 @@ YOLO26 is the latest generation of the [YOLO](https://docs.ultralytics.com/model
 - **Pure MLX** — 100% MLX at runtime, leverages Metal GPU acceleration via `mx.compile`
 - **Apple Silicon Optimized** — Designed for M1/M2/M3/M4 chips
 - **End-to-End Detection** — NMS-free detection with one-to-one matching
-- **Full Training Pipeline** — MuSGD optimizer, EMA, warmup, LR scheduling
+- **Full Training Pipeline** — MuSGD and AdamW optimizers, EMA, warmup, LR scheduling
 - **Official-Matching Accuracy** — COCO val2017 mAP with most models within 0.2% and a maximum deviation of 0.5%.
 - **Multi-Object Tracking** — ByteTrack and BoT-SORT trackers with pure-MLX Kalman filters, MOT17 evaluation support
 - **Instance Segmentation** — Segment26 head with multi-scale Proto26, mask mAP matching official results ![new](https://img.shields.io/badge/NEW-blue)
@@ -99,7 +99,7 @@ MLX matches or exceeds PyTorch MPS tracking speed at imgsz=1440. MLX is faster f
 
 - macOS with Apple Silicon (M1/M2/M3/M4)
 - Python 3.10+
-- MLX 0.30.3+
+- MLX >=0.30.3, <0.31
 
 ## Project Structure
 
@@ -113,7 +113,7 @@ yolo-mlx/
 │   ├── data/                      # Data loading, COCODataset (detection + segmentation)
 │   ├── engine/                    # YOLO, Predictor, Trainer, Validator, TrackerManager, Results
 │   ├── nn/                        # Network blocks: Detect, Segment26, Proto26, model builder
-│   ├── optim/                     # MuSGD optimizer
+│   ├── optim/                     # MuSGD and AdamW optimizers
 │   ├── trackers/                  # ByteTrack, BoT-SORT, Kalman filters, matching
 │   └── utils/                     # Losses (v8SegmentationLoss), ops, TAL, metrics, video I/O
 ├── scripts/                       # Benchmark/eval/download utilities
@@ -157,7 +157,7 @@ yolo-mlx converters convert models/yolo26n.pt -o models/yolo26n.npz --verify
 
 # 3. Run inference
 mkdir -p images
-curl -L -o images/bus.jpg https://ultralytics.com/images/bus.jpg
+curl -fsSL -o images/bus.jpg https://ultralytics.com/images/bus.jpg
 ```
 
 ```python
@@ -366,7 +366,7 @@ yolo-mlx converters convert models/yolo26n-seg.pt -o models/yolo26n-seg.npz --ve
 
 # 3. Run segmentation
 mkdir -p images
-curl -L -o images/bus.jpg https://ultralytics.com/images/bus.jpg
+curl -fsSL -o images/bus.jpg https://ultralytics.com/images/bus.jpg
 ```
 
 ```python

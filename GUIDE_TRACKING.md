@@ -36,7 +36,7 @@ auto-created by the scripts when needed.
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| mlx | >= 0.30.3 | Apple Silicon ML framework |
+| mlx | >=0.30.3, <0.31 | Apple Silicon ML framework |
 | numpy | >= 2.0.0 | Array operations |
 | pillow | >= 10.0.0 | Image loading |
 | pyyaml | >= 6.0 | Config parsing |
