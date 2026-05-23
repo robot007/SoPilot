@@ -3,9 +3,33 @@
 <plist version="1.0">
 <dict>
 	<key>files</key>
-	<dict/>
+	<dict>
+		<key>Resources/Models/README.md</key>
+		<data>
+		lFGyANFVl7sn+Uhyt8ayTPnybjA=
+		</data>
+		<key>Resources/yolo_mlx_face_worker.py</key>
+		<data>
+		VZ/YNTvYweVZnm2DKyDsiNIgM48=
+		</data>
+	</dict>
 	<key>files2</key>
-	<dict/>
+	<dict>
+		<key>Resources/Models/README.md</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			hOShSGFJbEK7ztFNNBv2gIaRLiPTfsYWRdi2K9pmxVE=
+			</data>
+		</dict>
+		<key>Resources/yolo_mlx_face_worker.py</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			CS5tG3VnyQeXxVNAMId0GYltrszxYcI2hMXbzu3KC/E=
+			</data>
+		</dict>
+	</dict>
 	<key>rules</key>
 	<dict>
 		<key>^Resources/</key>

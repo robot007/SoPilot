@@ -24,6 +24,10 @@ cp "${BUILD_DIR}/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/"
 mkdir -p "${APP_BUNDLE}/Contents"
 cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
 
+# Copy runtime resources (YOLO worker + optional bundled models)
+mkdir -p "${APP_BUNDLE}/Contents/Resources"
+find "Resources" -mindepth 1 -maxdepth 1 ! -name "Info.plist" ! -name "__pycache__" -exec cp -R {} "${APP_BUNDLE}/Contents/Resources/" \;
+
 # 3. Ad-hoc sign
 echo "→ Ad-hoc signing..."
 codesign --force --deep --sign - "${APP_BUNDLE}"
