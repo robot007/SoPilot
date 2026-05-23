@@ -8,7 +8,7 @@ struct FaceBoxDemoApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(cameraManager)
-                .frame(minWidth: 640, minHeight: 480)
+                .frame(minWidth: 960, minHeight: 520)
         }
         .windowResizability(.contentSize)
     }

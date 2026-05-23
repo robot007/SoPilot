@@ -3,26 +3,37 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var cameraManager: CameraManager
     @StateObject private var faceDetector = FaceDetector()
+    @StateObject private var vlmModelService = VLMModelService()
     
     var body: some View {
-        Group {
-            switch cameraManager.authorizationStatus {
-            case .notDetermined:
-                ProgressView("Requesting camera access...")
-                    .scaleEffect(1.5)
-            case .denied:
-                permissionDeniedView
-            case .authorized:
-                if let error = cameraManager.cameraError {
-                    cameraErrorView(error)
-                } else {
-                    cameraView
-                }
-            }
+        HStack(spacing: 0) {
+            primaryContent
+            Divider()
+            LocalVLMPanel(service: vlmModelService)
         }
-        .frame(minWidth: 640, minHeight: 480)
+        .frame(minWidth: 960, minHeight: 520)
         .onAppear {
             cameraManager.setFaceDetector(faceDetector)
+        }
+    }
+
+    @ViewBuilder
+    private var primaryContent: some View {
+        switch cameraManager.authorizationStatus {
+        case .notDetermined:
+            ProgressView("Requesting camera access...")
+                .scaleEffect(1.5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .denied:
+            permissionDeniedView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .authorized:
+            if let error = cameraManager.cameraError {
+                cameraErrorView(error)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                cameraView
+            }
         }
     }
     
@@ -107,21 +118,46 @@ struct ContentView: View {
     
     private func faceOverlay(_ face: DetectedFace, in viewSize: CGSize) -> some View {
         let box = face.boundingBox
-        // Vision uses bottom-left origin; SwiftUI uses top-left
-        let x = box.midX * viewSize.width
-        let y = (1 - box.midY) * viewSize.height
-        let w = box.width * viewSize.width
-        let h = box.height * viewSize.height
-        
+        let frameSize = cameraManager.frameDimensions
+
+        let x: CGFloat
+        let y: CGFloat
+        let w: CGFloat
+        let h: CGFloat
+
+        if frameSize.width > 0 && frameSize.height > 0 {
+            // Match AVCaptureVideoPreviewLayer's resizeAspectFill transform:
+            // uniform scale to fill, then center (cropping overflow).
+            let scaleX = viewSize.width / frameSize.width
+            let scaleY = viewSize.height / frameSize.height
+            let scale = max(scaleX, scaleY)
+
+            let displayedWidth = frameSize.width * scale
+            let displayedHeight = frameSize.height * scale
+            let offsetX = (viewSize.width - displayedWidth) / 2
+            let offsetY = (viewSize.height - displayedHeight) / 2
+
+            x = box.midX * displayedWidth + offsetX
+            y = viewSize.height - box.midY * displayedHeight - offsetY
+            w = box.width * displayedWidth
+            h = box.height * displayedHeight
+        } else {
+            // Fallback before first frame arrives
+            x = box.midX * viewSize.width
+            y = (1 - box.midY) * viewSize.height
+            w = box.width * viewSize.width
+            h = box.height * viewSize.height
+        }
+
         let confidenceText = face.confidence > 0 && face.confidence < 1.0
             ? String(format: "face %.2f", face.confidence)
             : "face"
-        
+
         return ZStack(alignment: .bottomLeading) {
             Rectangle()
                 .stroke(Color.green, lineWidth: 2)
                 .frame(width: w, height: h)
-            
+
             Text(confidenceText)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundColor(.white)

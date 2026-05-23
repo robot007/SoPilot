@@ -38,6 +38,7 @@ class CameraManager: NSObject, ObservableObject {
     // MARK: - Camera Menu State
     @Published var availableCameras: [CameraInfo] = []
     @Published var selectedCameraID: String?
+    @Published var frameDimensions: CGSize = .zero
     
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -248,6 +249,16 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            let width = CVPixelBufferGetWidth(imageBuffer)
+            let height = CVPixelBufferGetHeight(imageBuffer)
+            let newDimensions = CGSize(width: CGFloat(width), height: CGFloat(height))
+            if newDimensions != self.frameDimensions {
+                DispatchQueue.main.async {
+                    self.frameDimensions = newDimensions
+                }
+            }
+        }
         faceDetector?.process(sampleBuffer: sampleBuffer)
     }
 }

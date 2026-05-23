@@ -27,8 +27,8 @@ final class YoloMLXWorker {
     private let ioLock = NSLock()
 
     static func makeDefault() -> YoloMLXWorker? {
-        guard let scriptURL = ResourceLocator.findResource(named: "yolo_mlx_face_worker.py"),
-              let pythonURL = ResourceLocator.findPythonExecutable(),
+        guard let scriptURL = PythonRuntimeLocator.findResource(named: "yolo_mlx_face_worker.py"),
+              let pythonURL = PythonRuntimeLocator.findPythonExecutable(),
               let modelURL = ResourceLocator.findYoloModel() else {
             return nil
         }
@@ -60,7 +60,7 @@ final class YoloMLXWorker {
         environment["YOLO_MLX_MODEL"] = modelURL.path
         environment["YOLO_MLX_FACE_CLASS_IDS"] = environment["YOLO_MLX_FACE_CLASS_IDS"] ?? "0"
 
-        var pythonPath = ResourceLocator.findPythonPathEntries()
+        var pythonPath = PythonRuntimeLocator.findPythonPathEntries()
         if let existingPath = environment["PYTHONPATH"], !existingPath.isEmpty {
             pythonPath.append(existingPath)
         }
@@ -138,55 +138,6 @@ final class YoloMLXWorker {
 }
 
 private enum ResourceLocator {
-    static func findResource(named name: String) -> URL? {
-        let fileManager = FileManager.default
-        let candidates = [
-            Bundle.main.resourceURL?.appendingPathComponent(name),
-            URL(fileURLWithPath: fileManager.currentDirectoryPath).appendingPathComponent("Resources/\(name)"),
-            URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-                .deletingLastPathComponent().appendingPathComponent("Resources/\(name)"),
-        ].compactMap { $0 }
-
-        return candidates.first { fileManager.fileExists(atPath: $0.path) }
-    }
-
-    static func findPythonExecutable() -> URL? {
-        let fileManager = FileManager.default
-        let environment = ProcessInfo.processInfo.environment
-        if let override = environment["YOLO_MLX_PYTHON"], fileManager.isExecutableFile(atPath: override) {
-            return URL(fileURLWithPath: override)
-        }
-
-        let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-
-        let candidates = [
-            cwd.appendingPathComponent("../../.venv/bin/python").standardizedFileURL,
-            projectRoot().appendingPathComponent(".venv/bin/python"),
-            URL(fileURLWithPath: "/usr/bin/python3"),
-        ]
-
-        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
-    }
-
-    static func findPythonPathEntries() -> [String] {
-        let fileManager = FileManager.default
-        let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-        let candidates = [
-            cwd.appendingPathComponent("../../src").standardizedFileURL,
-            projectRoot().appendingPathComponent("src").standardizedFileURL,
-        ]
-
-        var seen = Set<String>()
-        return candidates.compactMap { candidate in
-            let path = candidate.path
-            guard directoryExists(atPath: path, fileManager: fileManager),
-                  seen.insert(path).inserted else {
-                return nil
-            }
-            return path
-        }
-    }
-
     static func findYoloModel() -> URL? {
         let fileManager = FileManager.default
         let environment = ProcessInfo.processInfo.environment
@@ -195,7 +146,7 @@ private enum ResourceLocator {
         }
 
         let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-        let sourceRoot = projectRoot()
+        let sourceRoot = PythonRuntimeLocator.projectRoot()
         let resourceURL = Bundle.main.resourceURL
 
         // Search order: face-specific models first (if dropped in), then the
@@ -220,20 +171,6 @@ private enum ResourceLocator {
         return candidates
             .map { $0.standardizedFileURL }
             .first { fileManager.fileExists(atPath: $0.path) }
-    }
-
-    private static func projectRoot() -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-    }
-
-    private static func directoryExists(atPath path: String, fileManager: FileManager) -> Bool {
-        var isDirectory: ObjCBool = false
-        return fileManager.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 }
 
