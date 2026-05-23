@@ -26,44 +26,80 @@ struct ContentView: View {
         }
     }
     
-    private var cameraNameOverlay: some View {
-        // Shows current camera name in top-left HUD
-        VStack(alignment: .leading, spacing: 4) {
-            if let selectedID = cameraManager.selectedCameraID,
-               let name = cameraManager.availableCameras.first(where: { $0.id == selectedID })?.name {
-                Text(name)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-            }
-            Text(cameraManager.isRunning ? "● Live" : "○ Stopped")
-                .font(.caption2)
-                .foregroundColor(cameraManager.isRunning ? .green : .secondary)
+    private var currentCameraName: String {
+        if let id = cameraManager.selectedCameraID,
+           let name = cameraManager.availableCameras.first(where: { $0.id == id })?.name {
+            return name
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .cornerRadius(8)
-        .padding(12)
+        return "No camera"
     }
-    
-    private var cameraView: some View {
-        GeometryReader { geometry in
-            ZStack {
-                CameraPreview(session: cameraManager.session)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                // Face overlays
-                ForEach(faceDetector.faces) { face in
-                    faceOverlay(face, in: geometry.size)
-                }
-                
-                // Camera name HUD in top-left
-                VStack {
-                    HStack {
-                        cameraNameOverlay
-                        Spacer()
+
+    private var cameraToolbar: some View {
+        HStack(spacing: 12) {
+            Menu {
+                if cameraManager.availableCameras.isEmpty {
+                    Text("No cameras found")
+                } else {
+                    ForEach(cameraManager.availableCameras) { camera in
+                        Button {
+                            cameraManager.selectCamera(uniqueID: camera.id)
+                        } label: {
+                            HStack {
+                                Text(cameraManager.selectedCameraID == camera.id ? "✓" : " ")
+                                Text(camera.name)
+                            }
+                        }
                     }
-                    Spacer()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "camera.fill")
+                    Text(currentCameraName)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            Button {
+                cameraManager.refreshCameras()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Refresh camera list")
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(cameraManager.isRunning ? Color.green : Color.secondary)
+                    .frame(width: 8, height: 8)
+                Text(cameraManager.isRunning ? "Live" : "Stopped")
+                    .font(.caption)
+                    .foregroundColor(cameraManager.isRunning ? .primary : .secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    private var cameraView: some View {
+        VStack(spacing: 0) {
+            cameraToolbar
+            GeometryReader { geometry in
+                ZStack {
+                    CameraPreview(session: cameraManager.session)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    ForEach(faceDetector.faces) { face in
+                        faceOverlay(face, in: geometry.size)
+                    }
                 }
             }
         }
