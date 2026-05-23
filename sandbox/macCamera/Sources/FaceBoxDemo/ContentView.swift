@@ -55,10 +55,12 @@ struct ContentView: View {
                         Button {
                             cameraManager.selectCamera(uniqueID: camera.id)
                         } label: {
-                            HStack {
-                                Text(cameraManager.selectedCameraID == camera.id ? "✓" : " ")
-                                Text(camera.name)
-                            }
+                            Label(
+                                camera.name,
+                                systemImage: cameraManager.selectedCameraID == camera.id
+                                    ? "checkmark"
+                                    : "camera"
+                            )
                         }
                     }
                 }
@@ -83,6 +85,11 @@ struct ContentView: View {
             }
             .buttonStyle(.borderless)
             .help("Refresh camera list")
+
+            Text("Version \(AppConfig.version)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
 
             Spacer()
 

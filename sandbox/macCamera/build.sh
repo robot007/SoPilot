@@ -24,6 +24,11 @@ cp "${BUILD_DIR}/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/"
 # Copy Info.plist
 mkdir -p "${APP_BUNDLE}/Contents"
 cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
+APP_VERSION="$(tr -d '[:space:]' < "Resources/app_version.txt")"
+if [ -n "${APP_VERSION}" ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" "${APP_BUNDLE}/Contents/Info.plist"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${APP_VERSION}" "${APP_BUNDLE}/Contents/Info.plist"
+fi
 
 # Copy runtime resources (YOLO worker + optional bundled models)
 mkdir -p "${APP_BUNDLE}/Contents/Resources"
