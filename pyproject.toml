@@ -41,10 +41,18 @@ dependencies = [
     "pillow>=10.0.0",
     "pyyaml>=6.0",
     "tqdm>=4.65.0",
-    "huggingface-hub>=0.25.0",
+    "huggingface-hub>=0.25.0,<1.0",
 ]
 
 [project.optional-dependencies]
+vlm = [
+    "accelerate>=0.28.0",
+    "timm>=0.9.12",
+    "tokenizers>=0.15.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "transformers==4.39.3",
+]
 tracking = [
     "opencv-python>=4.8.0",
     "lap>=0.5.0",

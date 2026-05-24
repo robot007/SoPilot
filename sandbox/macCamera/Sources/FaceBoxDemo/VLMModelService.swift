@@ -34,6 +34,10 @@ struct VLMModelListResponse: Decodable {
     let activeModelId: String?
 }
 
+private struct VLMChatResponse: Decodable {
+    let answer: String?
+}
+
 private struct VLMCommandErrorResponse: Decodable {
     let error: String?
     let errorType: String?
@@ -72,6 +76,10 @@ final class VLMModelService: ObservableObject {
         return models.first { $0.id == selectedModelId } ?? models.first
     }
 
+    var activeModel: VLMModel? {
+        models.first { $0.isActive }
+    }
+
     var statusLine: String {
         if let downloading = downloadingModel {
             return "Downloading \(downloading.displayName)..."
@@ -107,6 +115,36 @@ final class VLMModelService: ObservableObject {
     func deleteSelectedModel() {
         guard let model = selectedModel else { return }
         runModelListCommand(["delete", model.id])
+    }
+
+    func askActiveModel(
+        question: String,
+        frameData: [Data],
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        guard let model = activeModel else {
+            completion(.failure(VLMModelServiceError.commandFailed("No active VLM model.")))
+            return
+        }
+        guard !frameData.isEmpty else {
+            completion(.failure(VLMModelServiceError.commandFailed("No camera frames are available yet.")))
+            return
+        }
+
+        workQueue.async { [weak self] in
+            guard let self else { return }
+            let result = Result {
+                try self.runPythonChatCommand(
+                    modelId: model.id,
+                    question: question,
+                    frameData: frameData
+                )
+            }
+
+            DispatchQueue.main.async {
+                completion(result)
+            }
+        }
     }
 
     private func runModelListCommand(_ arguments: [String], downloadingModelId: String? = nil) {
@@ -163,15 +201,7 @@ final class VLMModelService: ObservableObject {
         process.standardOutput = outputPipe
         process.standardError = FileHandle.standardError
 
-        var environment = ProcessInfo.processInfo.environment
-        var pythonPath = PythonRuntimeLocator.findPythonPathEntries()
-        if let existingPath = environment["PYTHONPATH"], !existingPath.isEmpty {
-            pythonPath.append(existingPath)
-        }
-        if !pythonPath.isEmpty {
-            environment["PYTHONPATH"] = pythonPath.joined(separator: ":")
-        }
-        process.environment = environment
+        process.environment = pythonEnvironment()
 
         do {
             try process.run()
@@ -198,5 +228,91 @@ final class VLMModelService: ObservableObject {
                 "VLM model command returned an invalid response: \(rawOutput)"
             )
         }
+    }
+
+    private func runPythonChatCommand(modelId: String, question: String, frameData: [Data]) throws -> String {
+        guard let pythonURL = PythonRuntimeLocator.findPythonExecutable() else {
+            throw VLMModelServiceError.runtimeUnavailable("Python runtime was not found.")
+        }
+        guard let scriptURL = PythonRuntimeLocator.findResource(named: "vlm_model_manager_cli.py") else {
+            throw VLMModelServiceError.runtimeUnavailable("VLM model manager script was not found.")
+        }
+
+        var frameURLs: [URL] = []
+        defer {
+            for url in frameURLs {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        for (index, data) in frameData.enumerated() {
+            let frameURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("sopilot-vlm-\(UUID().uuidString)-\(index).jpg")
+            try data.write(to: frameURL, options: .atomic)
+            frameURLs.append(frameURL)
+        }
+
+        var arguments = [
+            scriptURL.path,
+            "chat",
+            modelId,
+            "--prompt",
+            question,
+        ]
+        for frameURL in frameURLs {
+            arguments.append(contentsOf: ["--frame-file", frameURL.path])
+        }
+
+        let process = Process()
+        let outputPipe = Pipe()
+        process.executableURL = pythonURL
+        process.arguments = arguments
+        process.standardOutput = outputPipe
+        process.standardError = FileHandle.standardError
+        process.environment = pythonEnvironment()
+
+        do {
+            try process.run()
+        } catch {
+            throw VLMModelServiceError.runtimeUnavailable(error.localizedDescription)
+        }
+
+        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        if process.terminationStatus != 0 {
+            if let commandError = try? decoder.decode(VLMCommandErrorResponse.self, from: output),
+               let message = commandError.error {
+                throw VLMModelServiceError.commandFailed(message)
+            }
+            throw VLMModelServiceError.commandFailed("VLM chat command failed.")
+        }
+
+        do {
+            let response = try decoder.decode(VLMChatResponse.self, from: output)
+            if let answer = response.answer, !answer.isEmpty {
+                return answer
+            }
+            throw VLMModelServiceError.invalidResponse("VLM chat command returned an empty answer.")
+        } catch let error as VLMModelServiceError {
+            throw error
+        } catch {
+            let rawOutput = String(data: output, encoding: .utf8) ?? ""
+            throw VLMModelServiceError.invalidResponse(
+                "VLM chat command returned an invalid response: \(rawOutput)"
+            )
+        }
+    }
+
+    private func pythonEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        var pythonPath = PythonRuntimeLocator.findPythonPathEntries()
+        if let existingPath = environment["PYTHONPATH"], !existingPath.isEmpty {
+            pythonPath.append(existingPath)
+        }
+        if !pythonPath.isEmpty {
+            environment["PYTHONPATH"] = pythonPath.joined(separator: ":")
+        }
+        return environment
     }
 }

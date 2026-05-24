@@ -14,6 +14,7 @@ from yolo26mlx.vlm.manager import (
     VLMModelManager,
     VLMModelManagerError,
 )
+from yolo26mlx.vlm.chat import answer_question
 
 _PROTOCOL_STDOUT = sys.stdout
 
@@ -53,6 +54,21 @@ def _cmd_download_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_chat(args: argparse.Namespace) -> int:
+    image_path = Path(args.image_file).expanduser() if args.image_file else None
+    frame_paths = [Path(path).expanduser() for path in args.frame_file]
+    result = answer_question(
+        _manager(args),
+        model_id=args.model_id,
+        image_path=image_path,
+        prompt=args.prompt,
+        frame_paths=frame_paths,
+        max_new_tokens=args.max_new_tokens,
+    )
+    _write_json(result.to_dict())
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vlm-model-manager",
@@ -83,6 +99,14 @@ def build_parser() -> argparse.ArgumentParser:
     status_cmd = subparsers.add_parser("download-status", help="Read download status.")
     status_cmd.add_argument("model_id")
     status_cmd.set_defaults(func=_cmd_download_status)
+
+    chat_cmd = subparsers.add_parser("chat", help="Ask the active local VLM about an image.")
+    chat_cmd.add_argument("model_id")
+    chat_cmd.add_argument("--image-file")
+    chat_cmd.add_argument("--frame-file", action="append", default=[])
+    chat_cmd.add_argument("--prompt", required=True)
+    chat_cmd.add_argument("--max-new-tokens", type=int, default=128)
+    chat_cmd.set_defaults(func=_cmd_chat)
 
     return parser
 

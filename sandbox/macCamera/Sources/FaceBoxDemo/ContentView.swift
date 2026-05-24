@@ -9,7 +9,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             primaryContent
             Divider()
-            LocalVLMPanel(service: vlmModelService)
+            LocalVLMPanel(service: vlmModelService, cameraManager: cameraManager)
         }
         .frame(minWidth: 960, minHeight: 520)
         .onAppear {

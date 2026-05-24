@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LocalVLMPanel: View {
     @ObservedObject var service: VLMModelService
+    @ObservedObject var cameraManager: CameraManager
     @State private var deleteCandidate: VLMModel?
 
     var body: some View {
@@ -10,11 +11,21 @@ struct LocalVLMPanel: View {
             statusBlock
             modelPicker
             actionButtons
+            downloadPathBlock
             progressBlock
             errorBlock
             Divider()
-            localCopy
-            Spacer(minLength: 0)
+            if let activeModel = service.activeModel {
+                VLMChatPanel(
+                    service: service,
+                    cameraManager: cameraManager,
+                    model: activeModel
+                )
+                    .id(activeModel.id)
+            } else {
+                localCopy
+                Spacer(minLength: 0)
+            }
         }
         .padding(16)
         .frame(width: 330)
@@ -122,6 +133,25 @@ struct LocalVLMPanel: View {
     }
 
     @ViewBuilder
+    private var downloadPathBlock: some View {
+        if let selectedModel {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Download path")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(selectedModel.localPath)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
     private var progressBlock: some View {
         if selectedIsDownloading {
             HStack(spacing: 8) {
@@ -216,4 +246,170 @@ struct LocalVLMPanel: View {
         }
         return message
     }
+}
+
+private struct VLMChatPanel: View {
+    @ObservedObject var service: VLMModelService
+    @ObservedObject var cameraManager: CameraManager
+    let model: VLMModel
+    private let recentVideoWindowSeconds: TimeInterval = 5
+    private let recentVideoMaxFrames = 6
+    @State private var draftQuestion = ""
+    @State private var messages: [VLMChatMessage] = []
+    @State private var isWaitingForAnswer = false
+    @State private var availableFrameCount = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .foregroundStyle(.secondary)
+                Text("Chat")
+                    .font(.headline)
+                Spacer()
+                Text(model.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Label(videoContextText, systemImage: availableFrameCount < 2 ? "hourglass" : "film.stack")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(messages) { message in
+                        VLMChatBubble(message: message)
+                    }
+                    if isWaitingForAnswer {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Thinking...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+            }
+            .frame(minHeight: 120)
+
+            HStack(spacing: 8) {
+                TextField("Ask \(model.displayName)", text: $draftQuestion)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(sendQuestion)
+
+                Button {
+                    sendQuestion()
+                } label: {
+                    Image(systemName: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(trimmedQuestion.isEmpty || isWaitingForAnswer)
+                .help("Send question")
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .onAppear(perform: refreshVideoContext)
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            refreshVideoContext()
+        }
+    }
+
+    private var trimmedQuestion: String {
+        draftQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var videoContextText: String {
+        if availableFrameCount < 2 {
+            return "warming up video buffer: last 5s / \(availableFrameCount) frame"
+                + (availableFrameCount == 1 ? "" : "s")
+        }
+        return "Using recent video: last 5s / \(availableFrameCount) frames"
+    }
+
+    private func sendQuestion() {
+        let question = trimmedQuestion
+        guard !question.isEmpty, !isWaitingForAnswer else { return }
+        let frames = cameraManager.recentFrameJPEGs(
+            windowSeconds: recentVideoWindowSeconds,
+            maxFrames: recentVideoMaxFrames
+        )
+        availableFrameCount = frames.count
+        guard !frames.isEmpty else {
+            messages.append(
+                VLMChatMessage(
+                    role: .assistant,
+                    text: "No recent camera frames are available yet."
+                )
+            )
+            return
+        }
+
+        messages.append(VLMChatMessage(role: .user, text: question))
+        draftQuestion = ""
+        isWaitingForAnswer = true
+
+        service.askActiveModel(question: question, frameData: frames) { result in
+            isWaitingForAnswer = false
+            switch result {
+            case .success(let answer):
+                messages.append(VLMChatMessage(role: .assistant, text: answer))
+            case .failure(let error):
+                messages.append(VLMChatMessage(role: .assistant, text: error.localizedDescription))
+            }
+        }
+    }
+
+    private func refreshVideoContext() {
+        availableFrameCount = cameraManager.recentFrameJPEGs(
+            windowSeconds: recentVideoWindowSeconds,
+            maxFrames: recentVideoMaxFrames
+        ).count
+    }
+}
+
+private struct VLMChatBubble: View {
+    let message: VLMChatMessage
+
+    var body: some View {
+        HStack {
+            if message.role == .user {
+                Spacer(minLength: 24)
+            }
+
+            Text(message.text)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(bubbleBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .textSelection(.enabled)
+
+            if message.role == .assistant {
+                Spacer(minLength: 24)
+            }
+        }
+    }
+
+    private var bubbleBackground: Color {
+        message.role == .user
+            ? Color.accentColor.opacity(0.16)
+            : Color(nsColor: .textBackgroundColor)
+    }
+}
+
+private struct VLMChatMessage: Identifiable, Equatable {
+    let id = UUID()
+    let role: VLMChatRole
+    let text: String
+}
+
+private enum VLMChatRole: Equatable {
+    case user
+    case assistant
 }

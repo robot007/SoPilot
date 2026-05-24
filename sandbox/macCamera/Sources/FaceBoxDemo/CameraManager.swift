@@ -1,5 +1,7 @@
 import AVFoundation
+import AppKit
 import Combine
+import CoreImage
 
 enum CameraAuthorizationStatus {
     case notDetermined
@@ -30,6 +32,11 @@ struct CameraInfo: Identifiable, Hashable, Sendable {
     let name: String     // localizedName
 }
 
+private struct RecentVideoFrame {
+    let capturedAt: Date
+    let jpegData: Data
+}
+
 class CameraManager: NSObject, ObservableObject {
     @Published var authorizationStatus: CameraAuthorizationStatus = .notDetermined
     @Published var cameraError: CameraError?
@@ -43,7 +50,12 @@ class CameraManager: NSObject, ObservableObject {
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "com.sopilot.FaceBoxDemo.session")
+    private let frameLock = NSLock()
+    private let ciContext = CIContext()
     private var faceDetector: FaceDetector?
+    private var latestJPEGData: Data?
+    private var recentVideoFrames: [RecentVideoFrame] = []
+    private var lastBufferedFrameAt = Date.distantPast
     
     override init() {
         super.init()
@@ -52,6 +64,24 @@ class CameraManager: NSObject, ObservableObject {
     
     func setFaceDetector(_ detector: FaceDetector) {
         self.faceDetector = detector
+    }
+
+    func latestFrameJPEGData(compressionQuality: CGFloat = 0.78) -> Data? {
+        frameLock.lock()
+        let data = latestJPEGData
+        frameLock.unlock()
+        return data
+    }
+
+    func recentFrameJPEGs(windowSeconds: TimeInterval = 5, maxFrames: Int = 6) -> [Data] {
+        let cutoff = Date().addingTimeInterval(-windowSeconds)
+        frameLock.lock()
+        let frames = recentVideoFrames
+            .filter { $0.capturedAt >= cutoff }
+            .suffix(maxFrames)
+            .map(\.jpegData)
+        frameLock.unlock()
+        return Array(frames)
     }
     
     // MARK: - Authorization
@@ -250,6 +280,8 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         from connection: AVCaptureConnection
     ) {
         if let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
+            bufferRecentFrameIfNeeded(imageBuffer)
+
             let width = CVPixelBufferGetWidth(imageBuffer)
             let height = CVPixelBufferGetHeight(imageBuffer)
             let newDimensions = CGSize(width: CGFloat(width), height: CGFloat(height))
@@ -260,5 +292,42 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
         }
         faceDetector?.process(sampleBuffer: sampleBuffer)
+    }
+
+    private func bufferRecentFrameIfNeeded(_ pixelBuffer: CVPixelBuffer) {
+        let now = Date()
+
+        frameLock.lock()
+        let shouldBuffer = now.timeIntervalSince(lastBufferedFrameAt) >= 1
+        frameLock.unlock()
+
+        guard shouldBuffer,
+              let jpegData = jpegData(from: pixelBuffer, compressionQuality: 0.78) else {
+            return
+        }
+
+        frameLock.lock()
+        latestJPEGData = jpegData
+        lastBufferedFrameAt = now
+        recentVideoFrames.append(RecentVideoFrame(capturedAt: now, jpegData: jpegData))
+
+        let cutoff = now.addingTimeInterval(-5)
+        recentVideoFrames = Array(
+            recentVideoFrames
+                .filter { $0.capturedAt >= cutoff }
+                .suffix(6)
+        )
+        frameLock.unlock()
+    }
+
+    private func jpegData(from pixelBuffer: CVPixelBuffer, compressionQuality: CGFloat) -> Data? {
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = ciContext.createCGImage(image, from: image.extent) else { return nil }
+
+        let bitmap = NSBitmapImageRep(cgImage: cgImage)
+        return bitmap.representation(
+            using: .jpeg,
+            properties: [.compressionFactor: compressionQuality]
+        )
     }
 }

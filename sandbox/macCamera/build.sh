@@ -46,7 +46,7 @@ if [ -x "${PYTHON_FOR_PACKAGING}" ]; then
     mkdir -p "${APP_BUNDLE}/Contents/Resources/python-packages"
     "${PYTHON_FOR_PACKAGING}" -m pip install --upgrade \
         --target "${APP_BUNDLE}/Contents/Resources/python-packages" \
-        "${REPO_ROOT}"
+        "${REPO_ROOT}[vlm]"
 else
     echo "  Python package bundling skipped; ${PYTHON_FOR_PACKAGING} was not found."
 fi
