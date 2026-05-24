@@ -1,0 +1,91 @@
+{
+  "schema_version": "0.1.0",
+  "package": {
+    "id": "bp_monitor_sop_checker",
+    "name": "Blood Pressure Monitor SOP Checker",
+    "version": "0.1.0",
+    "category": "Healthcare Workflow",
+    "creator": "SoPilot",
+    "description": "Checks whether a user rolls up a sleeve, places a cuff on the upper arm, measures, and completes the workflow.",
+    "safety_note": "For workflow assistance only. Not medical diagnosis."
+  },
+  "runtime": {
+    "decision_policy": {
+      "final_decision": "local_rule_engine",
+      "cloud_vlm_allowed": false
+    }
+  },
+  "tags": [
+    {"id": "blood_pressure_monitor", "name": "Blood pressure monitor"},
+    {"id": "cuff", "name": "Arm cuff"},
+    {"id": "upper_arm", "name": "Upper arm"},
+    {"id": "sleeve", "name": "Sleeve"}
+  ],
+  "steps": [
+    {"id": "S0", "name": "Start", "required": true, "order": 0},
+    {"id": "S1", "name": "Roll sleeve", "required": true, "order": 1, "ambiguity_allowed": true},
+    {"id": "S2", "name": "Put Cuff On Upper Arm", "required": true, "order": 2},
+    {"id": "S3", "name": "Measure", "required": true, "order": 3},
+    {"id": "S4", "name": "Done", "required": true, "order": 4}
+  ],
+  "rules": [
+    {
+      "id": "S0_monitor_visible_before_measure",
+      "step_id": "S0",
+      "type": "exists_before",
+      "tag": "blood_pressure_monitor",
+      "event": "measure_started",
+      "min_confidence": 0.5,
+      "failure_message": "The blood pressure monitor was not visible before measurement started."
+    },
+    {
+      "id": "S1_sleeve_clear_or_on_upper_arm",
+      "step_id": "S1",
+      "type": "any_of",
+      "conditions": [
+        {
+          "id": "S1_no_sleeve_detected",
+          "type": "not_exists",
+          "tag": "sleeve",
+          "min_confidence": 0.5
+        },
+        {
+          "id": "S1_sleeve_on_upper_arm",
+          "type": "overlap",
+          "source_tag": "sleeve",
+          "target_tag": "upper_arm",
+          "min_overlap_ratio": 0.25,
+          "min_confidence": 0.5
+        }
+      ],
+      "failure_message": "The sleeve was detected but did not appear to be clear of or on the upper arm."
+    },
+    {
+      "id": "S2_cuff_overlaps_upper_arm",
+      "step_id": "S2",
+      "type": "overlap",
+      "source_tag": "cuff",
+      "target_tag": "upper_arm",
+      "min_overlap_ratio": 0.25,
+      "ambiguity_margin_ratio": 0.05,
+      "min_confidence": 0.5,
+      "failure_message": "The cuff did not appear to be on the upper arm."
+    },
+    {
+      "id": "S3_measure_after_setup",
+      "step_id": "S3",
+      "type": "after_all_required",
+      "event": "measure_started",
+      "required_steps": ["S0", "S1", "S2"],
+      "failure_message": "Measurement started before the sleeve was rolled and the cuff was on the upper arm."
+    },
+    {
+      "id": "S4_done_after_measure",
+      "step_id": "S4",
+      "type": "after_all_required",
+      "event": "measurement_done",
+      "required_steps": ["S3"],
+      "failure_message": "The workflow was marked done before measurement was validly started."
+    }
+  ]
+}
