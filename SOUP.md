@@ -1,6 +1,6 @@
 # SOUP Engine: A Hybrid Local-Vision Architecture for Affordable Physical-SOP Validation
 
-version 1.2
+version 1.3
 
 **Project:** SoPilot — local-first SOP video checker
 **Document type:** Hackathon submission tutorial
@@ -46,6 +46,8 @@ The rest of this document is a tutorial walk-through of *why* this architecture,
 
 ### 2.1 Root cause: VLMs fail on domain-specific objects
 
+NOTE: following screen shots are from our example macOS App to test on FastVLM from Apple.
+
 A general-purpose VLM trained on web-scale image–text pairs handles everyday objects very well. Figure 1 shows a current-generation VLM correctly identifying a common ballpoint pen.
 
 ![Figure 1](doc/img/VLM-identify-pen.png)
@@ -90,7 +92,7 @@ The SOUP Engine's central design choice is:
 
 This works because:
 
-- YOLO models are **10–100 MB** rather than 1–144 GB. A YOLO26-n MLX model is ~6 MB and runs at 170 FPS on an M4 Pro [yolo26-mlx].
+- YOLO models are **10–100 MB** rather than 1–144 GB. A YOLO26-n MLX model is ~10 MB and runs at 170 FPS on an M4 Pro [yolo26-mlx].
 - Training a YOLO detector on a custom domain takes about $5$ min on a Macbook Air, with **$0 GPU cost**. Compare to the multi-hundred GPU-hour runs typical for VLM QLoRA.
 - The VLM's contribution can be **untrained**: it provides general scene context, action recognition ("the person is pressing a button"), and ambiguity explanation — capabilities that web-scale pre-training already covers well.
 - The two signals (YOLO detections of domain objects + VLM scene description) are then fused by a **deterministic local rule engine** that makes the actual pass/fail/needs-review decision. The rule engine is the final source of truth — never the VLM.
@@ -391,7 +393,14 @@ Many SOP correctness conditions reduce to **relative-position checks** between o
 
 The general pattern is: a small set of bounding-box primitives (center, IoU, vertical/horizontal margin, containment) composed into named rule types (`above`, `overlap`, `near`, `contains`) generates the bulk of the rule library, without any per-SOP custom code.
 
----
+
+@TODO SOUP engine can understand these geometry relationship within the `.soup` file, from which many SOP can be valided. For best results, we still need VLM, but its burdern is largely reduced.
+
+'doc/img/SOUP-relationships.png'
+
+@TODO SOUP engine can calibrate camera distoursions, such as this perspective. When user write .soup file, they just define the small 'plug' is within the large 'server box' and they don't need to write code to calculate the real coordinates using camera calibration
+'doc/img/SOUP_perspective.png'
+
 
 ## 7. Worked Example: BP Monitor End-to-End
 
@@ -433,21 +442,20 @@ A `.soup` package is an installable SOP-workflow definition that keeps rules and
 
 ## References
 
-- **[Spheron'26]** Spheron. *Fine-Tuning Economics Guide 2026.* GPU pricing, VRAM requirements, and QLoRA training benchmarks.
-- **[Glassdoor'26]** Glassdoor. *AI/ML Engineer salary survey, May 2026.* US average $177,652/yr ≈ $85/hr fully loaded.
-- **[Park'25]** Park et al. *Fine-tuning open-source VLMs on small clinical datasets.* PMC 2025. QLoRA + Unsloth on 1× RTX 4090; baseline for hybrid-approach training-time estimates.
-- **[Modal'26]** Modal. *Public GPU pricing*, May 2026. H100 ≈ $3.95/hr, A100 80GB ≈ $2.50/hr.
-- **[RunPod'26]** RunPod. *Per-second GPU pricing*, May 2026.
-- **[Lambda'26]** Lambda. *GPU cloud pricing*, May 2026.
-- **[OpenAI'26]** OpenAI. *API pricing, image-input token rates*, May 2026.
-- **[yolo26-mlx]** *YOLO26 MLX project README.* See [yolo26-README.md](./yolo26-README.md). 170 FPS on M4 Pro for yolo26n; 6 MB on-disk.
-- **[HF-SmolVLM]** Hugging Face. *SmolVLM-256M-Instruct model card.*
-- **[HF-FastVLM]** Hugging Face. *Apple FastVLM-0.5B model card.*
-- **[vLLM-Qwen2.5VL]** vLLM. *Qwen2.5-VL usage guide.* Context-length / memory trade-offs.
-- **[NVIDIA-Hafnia]** Milestone Systems / NVIDIA. *Project Hafnia auto-labeling case study.* 750k → 10k labeling hours via embedding-based curation.
-- **[LabelYourData'26]** Label Your Data. *VLM fine-tuning dataset-sizing guidelines, 2026.*
-- **[Nanonets-VLM]** Nanonets. *VLM fine-tuning guide.* 10k–100k training samples for production quality.
-- **[gpucost.org]** GPU cost / break-even reference, 2026.
+- **[Spheron'26]** Spheron. [*How to Fine-Tune LLMs in 2026: Costs, GPUs, and Code*](https://www.spheron.network/blog/how-to-fine-tune-llm-2026/). GPU pricing, VRAM requirements, and QLoRA training benchmarks.
+- **[Glassdoor'26]** Glassdoor. [*AI/ML Engineer salaries in United States*](https://www.glassdoor.com/Salaries/ai-ml-engineer-salary-SRCH_KO0%2C14.htm). Salary benchmark used to approximate AI/ML engineer hourly labor.
+- **[Modal'26]** Modal. [*Public GPU pricing*](https://modal.com/pricing). H100 and A100 80GB GPU-hour rates.
+- **[RunPod'26]** RunPod. [*GPU cloud pricing*](https://www.runpod.io/pricing). Per-second GPU pricing.
+- **[Lambda'26]** Lambda. [*AI cloud pricing*](https://lambda.ai/pricing). GPU cloud pricing.
+- **[OpenAI'26]** OpenAI. [*API pricing*](https://openai.com/api/pricing/). API pricing and image-input token rates.
+- **[yolo26-mlx]** [*YOLO26 MLX project README*](./yolo26-README.md). 170 FPS on M4 Pro for yolo26n; local `.npz` is ~10 MB on disk.
+- **[HF-SmolVLM]** Hugging Face. [*SmolVLM-256M-Instruct model card*](https://huggingface.co/HuggingFaceTB/SmolVLM-256M-Instruct).
+- **[HF-FastVLM]** Hugging Face. [*Apple FastVLM-0.5B model card*](https://huggingface.co/apple/FastVLM-0.5B).
+- **[vLLM-Qwen2.5VL]** vLLM. [*Qwen2.5-VL usage guide*](https://docs.vllm.ai/projects/recipes/en/latest/Qwen/Qwen2.5-VL.html). Context-length / memory trade-offs.
+- **[NVIDIA-Hafnia]** Milestone Systems / NVIDIA. [*Transforming VLM development with Project Hafnia, powered by NVIDIA NeMo Curator & DGX Cloud*](https://www.milestonesys.com/resources/content/articles/development-with-project-hafnia/). 750k+ hours retrieved; 10k+ curated hours processed.
+- **[LabelYourData'26]** Label Your Data. [*VLM: How Vision-Language Models Work (2026 Guide)*](https://labelyourdata.com/articles/machine-learning/vision-language-models). VLM fine-tuning dataset-sizing guidance.
+- **[Nanonets-VLM]** Nanonets. [*Fine-Tuning Vision Language Models (VLMs) for Data Extraction*](https://nanonets.com/blog/fine-tuning-vision-language-models-vlms-for-data-extraction/). 10k–100k training samples for production quality.
+- **[gpucost.org]** [*GPU Pricing & Cloud GPU Cost Comparison 2026*](https://gpucost.org/). GPU cost and cloud GPU rental reference.
 
 ---
 
@@ -494,7 +502,7 @@ Assumes parameter-efficient fine-tuning (QLoRA/LoRA on a 7B–11B VLM such as Qw
 | Maint payroll @ $85/hr | $5k–$10k | $17k–$34k | $68k–$128k |
 | **Annual deploy subtotal** | **~$6k–$11k** | **~$19k–$36k** | **~$76k–$136k** |
 
-Sources for Claude's anchors: [Spheron'26], [Glassdoor'26], [Park'25], [Modal'26], [RunPod'26], [Lambda'26], [LabelYourData'26], [Nanonets-VLM], [NVIDIA-Hafnia], [gpucost.org].
+Sources for Claude's anchors: [Spheron'26], [Glassdoor'26], [Modal'26], [RunPod'26], [Lambda'26], [LabelYourData'26], [Nanonets-VLM], [NVIDIA-Hafnia], [gpucost.org].
 
 Structural caveats: (i) the dev subtotal is dominated by labor, not compute — the GPU bill for LoRA fine-tuning is typically <5% of project cost at every scale; (ii) at 1,000 SOPs, local-deployment economics begin to compete with cloud inference (gpucost.org puts H100 break-even at ~10,000 hours of usage vs. $3/hr rental, which a single inference workload reaches in ~14 months of 24/7 uptime).
 
@@ -523,7 +531,7 @@ Reconciled Table 2 in §3.2 is derived from the ChatGPT estimate below. Two oper
 
 ### C.1 ChatGPT estimate — onboarding labor only
 
-| Mode | Scope | Domain expert hrs | Expert cost @ $64/hr | Senior AI hrs | AI cost |
+| Mode | Scope | Domain expert hrs | Expert cost @ $64/hr | Senior AI hrs | Training GPU cost |
 |---|---|---:|---:|---:|---:|
 | Full Local | 10 SOPs | 160–320 | $10.2k–$20.5k | 0 | $0 |
 | Full Local | 100 SOPs | 1,200–2,400 | $76.8k–$153.6k | 0 | $0 |
