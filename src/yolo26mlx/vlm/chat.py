@@ -14,6 +14,7 @@ VIDEO_CONTEXT_PREFIX = (
     "This is a time-ordered contact sheet from recent video, oldest to newest. "
     "Use all frames to answer temporal questions.\n"
 )
+SYSTEM_PROMPT_PREFIX = "System prompt:\n"
 
 
 class VLMChatError(RuntimeError):
@@ -34,6 +35,7 @@ def answer_question(
     model_id: str,
     image_path: Path | None,
     prompt: str,
+    system_prompt: str | None = None,
     frame_paths: Sequence[Path] | None = None,
     max_new_tokens: int = 128,
 ) -> VLMChatResult:
@@ -51,10 +53,18 @@ def answer_question(
     frame_paths = list(frame_paths or [])
     if frame_paths:
         validated_paths = validate_frame_paths(frame_paths)
-        model_prompt = VIDEO_CONTEXT_PREFIX + question
+        model_prompt = build_model_prompt(
+            question,
+            system_prompt=system_prompt,
+            has_video_context=True,
+        )
     elif image_path is not None:
         validated_paths = validate_frame_paths([image_path])
-        model_prompt = question
+        model_prompt = build_model_prompt(
+            question,
+            system_prompt=system_prompt,
+            has_video_context=False,
+        )
     else:
         raise VLMChatError("No image or video frames were provided.")
 
@@ -115,6 +125,23 @@ def answer_question(
     if not answer:
         raise VLMChatError("Local VLM returned an empty answer.")
     return VLMChatResult(model_id=model_id, answer=answer)
+
+
+def build_model_prompt(question: str, system_prompt: str | None, has_video_context: bool) -> str:
+    """Build the text sent beside the visual context."""
+    clean_question = question.strip()
+    clean_system_prompt = (system_prompt or "").strip()
+
+    if not clean_system_prompt and not has_video_context:
+        return clean_question
+
+    parts: list[str] = []
+    if clean_system_prompt:
+        parts.append(SYSTEM_PROMPT_PREFIX + clean_system_prompt)
+    if has_video_context:
+        parts.append(VIDEO_CONTEXT_PREFIX.strip())
+    parts.append("User question:\n" + clean_question)
+    return "\n\n".join(parts)
 
 
 def validate_frame_paths(frame_paths: Sequence[Path]) -> list[Path]:

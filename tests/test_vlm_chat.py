@@ -10,11 +10,13 @@ from PIL import Image, ImageDraw, ImageOps
 
 from yolo26mlx.vlm.chat import (
     VLMChatError,
+    SYSTEM_PROMPT_PREFIX,
     VIDEO_CONTEXT_PREFIX,
+    build_model_prompt,
     build_visual_context_image,
     validate_frame_paths,
 )
-from yolo26mlx.vlm.cli import build_parser
+from yolo26mlx.vlm.cli import _resolve_system_prompt, build_parser
 
 
 def _write_frame(path: Path, color: tuple[int, int, int]) -> None:
@@ -67,6 +69,8 @@ def test_chat_parser_accepts_repeated_frame_files() -> None:
             "a.jpg",
             "--frame-file",
             "b.jpg",
+            "--system-prompt-file",
+            "prompt.txt",
             "--prompt",
             "What changed?",
         ]
@@ -74,9 +78,41 @@ def test_chat_parser_accepts_repeated_frame_files() -> None:
 
     assert args.image_file is None
     assert args.frame_file == ["a.jpg", "b.jpg"]
+    assert args.system_prompt_file == "prompt.txt"
     assert args.prompt == "What changed?"
 
 
 def test_video_context_prompt_is_explicit() -> None:
     assert "time-ordered contact sheet" in VIDEO_CONTEXT_PREFIX
     assert "oldest to newest" in VIDEO_CONTEXT_PREFIX
+
+
+def test_build_model_prompt_includes_system_prompt_before_video_context() -> None:
+    prompt = build_model_prompt(
+        "How many people are visible?",
+        system_prompt="Answer in one sentence.",
+        has_video_context=True,
+    )
+
+    assert prompt.startswith(SYSTEM_PROMPT_PREFIX)
+    assert "Answer in one sentence." in prompt
+    assert prompt.index("Answer in one sentence.") < prompt.index("time-ordered contact sheet")
+    assert "User question:\nHow many people are visible?" in prompt
+
+
+def test_build_model_prompt_preserves_plain_question_without_extra_context() -> None:
+    assert build_model_prompt("What is this?", system_prompt=None, has_video_context=False) == "What is this?"
+
+
+def test_resolve_system_prompt_reads_txt_file_and_direct_text(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("Prefer short answers.", encoding="utf-8")
+
+    prompt = _resolve_system_prompt("Mention uncertainty.", str(prompt_file))
+
+    assert prompt == "Prefer short answers.\n\nMention uncertainty."
+
+
+def test_resolve_system_prompt_rejects_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(VLMChatError, match="System prompt file was not found"):
+        _resolve_system_prompt(None, str(tmp_path / "missing.txt"))

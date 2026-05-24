@@ -14,7 +14,7 @@ from yolo26mlx.vlm.manager import (
     VLMModelManager,
     VLMModelManagerError,
 )
-from yolo26mlx.vlm.chat import answer_question
+from yolo26mlx.vlm.chat import VLMChatError, answer_question
 
 _PROTOCOL_STDOUT = sys.stdout
 
@@ -57,16 +57,32 @@ def _cmd_download_status(args: argparse.Namespace) -> int:
 def _cmd_chat(args: argparse.Namespace) -> int:
     image_path = Path(args.image_file).expanduser() if args.image_file else None
     frame_paths = [Path(path).expanduser() for path in args.frame_file]
+    system_prompt = _resolve_system_prompt(args.system_prompt, args.system_prompt_file)
     result = answer_question(
         _manager(args),
         model_id=args.model_id,
         image_path=image_path,
         prompt=args.prompt,
+        system_prompt=system_prompt,
         frame_paths=frame_paths,
         max_new_tokens=args.max_new_tokens,
     )
     _write_json(result.to_dict())
     return 0
+
+
+def _resolve_system_prompt(system_prompt: str | None, system_prompt_file: str | None) -> str | None:
+    parts: list[str] = []
+    if system_prompt_file:
+        path = Path(system_prompt_file).expanduser()
+        if not path.is_file():
+            raise VLMChatError(f"System prompt file was not found: {path}")
+        parts.append(path.read_text(encoding="utf-8"))
+    if system_prompt:
+        parts.append(system_prompt)
+
+    combined = "\n\n".join(part.strip() for part in parts if part.strip()).strip()
+    return combined or None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -105,6 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
     chat_cmd.add_argument("--image-file")
     chat_cmd.add_argument("--frame-file", action="append", default=[])
     chat_cmd.add_argument("--prompt", required=True)
+    chat_cmd.add_argument("--system-prompt")
+    chat_cmd.add_argument("--system-prompt-file")
     chat_cmd.add_argument("--max-new-tokens", type=int, default=128)
     chat_cmd.set_defaults(func=_cmd_chat)
 

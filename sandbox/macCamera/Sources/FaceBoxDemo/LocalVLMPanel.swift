@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LocalVLMPanel: View {
     @ObservedObject var service: VLMModelService
@@ -255,6 +257,9 @@ private struct VLMChatPanel: View {
     private let recentVideoWindowSeconds: TimeInterval = 5
     private let recentVideoMaxFrames = 6
     @State private var draftQuestion = ""
+    @State private var systemPrompt = ""
+    @State private var systemPromptImportError: String?
+    @State private var systemPromptSourceName: String?
     @State private var messages: [VLMChatMessage] = []
     @State private var isWaitingForAnswer = false
     @State private var availableFrameCount = 0
@@ -276,6 +281,8 @@ private struct VLMChatPanel: View {
             Label(videoContextText, systemImage: availableFrameCount < 2 ? "hourglass" : "film.stack")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            systemPromptBlock
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -323,12 +330,87 @@ private struct VLMChatPanel: View {
         draftQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var trimmedSystemPrompt: String {
+        systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var videoContextText: String {
         if availableFrameCount < 2 {
             return "warming up video buffer: last 5s / \(availableFrameCount) frame"
                 + (availableFrameCount == 1 ? "" : "s")
         }
         return "Using recent video: last 5s / \(availableFrameCount) frames"
+    }
+
+    private var systemPromptBlock: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Label("System prompt", systemImage: "text.alignleft")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button {
+                    importSystemPrompt()
+                } label: {
+                    Label("Import .txt", systemImage: "doc.badge.plus")
+                }
+                .font(.caption)
+                .buttonStyle(.bordered)
+                .disabled(isWaitingForAnswer)
+
+                Button {
+                    systemPrompt = ""
+                    systemPromptImportError = nil
+                    systemPromptSourceName = nil
+                } label: {
+                    Image(systemName: "xmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .disabled(trimmedSystemPrompt.isEmpty || isWaitingForAnswer)
+                .help("Clear system prompt")
+            }
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $systemPrompt)
+                    .font(.caption)
+                    .frame(minHeight: 58, maxHeight: 76)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.6))
+                    )
+                    .disabled(isWaitingForAnswer)
+
+                if systemPrompt.isEmpty {
+                    Text("Paste system prompt")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 8)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            Text(systemPromptStatusText)
+                .font(.caption2)
+                .foregroundStyle(systemPromptImportError == nil ? Color.secondary : Color.red)
+                .lineLimit(2)
+        }
+    }
+
+    private var systemPromptStatusText: String {
+        if let systemPromptImportError {
+            return systemPromptImportError
+        }
+        if trimmedSystemPrompt.isEmpty {
+            return "No system prompt"
+        }
+        if let systemPromptSourceName {
+            return "\(systemPromptSourceName) / \(trimmedSystemPrompt.count) chars"
+        }
+        return "\(trimmedSystemPrompt.count) chars"
     }
 
     private func sendQuestion() {
@@ -353,7 +435,11 @@ private struct VLMChatPanel: View {
         draftQuestion = ""
         isWaitingForAnswer = true
 
-        service.askActiveModel(question: question, frameData: frames) { result in
+        service.askActiveModel(
+            question: question,
+            frameData: frames,
+            systemPrompt: trimmedSystemPrompt
+        ) { result in
             isWaitingForAnswer = false
             switch result {
             case .success(let answer):
@@ -369,6 +455,26 @@ private struct VLMChatPanel: View {
             windowSeconds: recentVideoWindowSeconds,
             maxFrames: recentVideoMaxFrames
         ).count
+    }
+
+    private func importSystemPrompt() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.plainText]
+        panel.title = "Choose System Prompt"
+        panel.prompt = "Use"
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            systemPrompt = try String(contentsOf: url, encoding: .utf8)
+            systemPromptSourceName = url.lastPathComponent
+            systemPromptImportError = nil
+        } catch {
+            systemPromptImportError = "Could not read \(url.lastPathComponent)"
+        }
     }
 }
 

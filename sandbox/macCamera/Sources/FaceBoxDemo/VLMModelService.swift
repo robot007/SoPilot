@@ -120,6 +120,7 @@ final class VLMModelService: ObservableObject {
     func askActiveModel(
         question: String,
         frameData: [Data],
+        systemPrompt: String,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         guard let model = activeModel else {
@@ -137,7 +138,8 @@ final class VLMModelService: ObservableObject {
                 try self.runPythonChatCommand(
                     modelId: model.id,
                     question: question,
-                    frameData: frameData
+                    frameData: frameData,
+                    systemPrompt: systemPrompt
                 )
             }
 
@@ -230,7 +232,12 @@ final class VLMModelService: ObservableObject {
         }
     }
 
-    private func runPythonChatCommand(modelId: String, question: String, frameData: [Data]) throws -> String {
+    private func runPythonChatCommand(
+        modelId: String,
+        question: String,
+        frameData: [Data],
+        systemPrompt: String
+    ) throws -> String {
         guard let pythonURL = PythonRuntimeLocator.findPythonExecutable() else {
             throw VLMModelServiceError.runtimeUnavailable("Python runtime was not found.")
         }
@@ -239,9 +246,13 @@ final class VLMModelService: ObservableObject {
         }
 
         var frameURLs: [URL] = []
+        var systemPromptURL: URL?
         defer {
             for url in frameURLs {
                 try? FileManager.default.removeItem(at: url)
+            }
+            if let systemPromptURL {
+                try? FileManager.default.removeItem(at: systemPromptURL)
             }
         }
         for (index, data) in frameData.enumerated() {
@@ -249,6 +260,14 @@ final class VLMModelService: ObservableObject {
                 .appendingPathComponent("sopilot-vlm-\(UUID().uuidString)-\(index).jpg")
             try data.write(to: frameURL, options: .atomic)
             frameURLs.append(frameURL)
+        }
+
+        let trimmedSystemPrompt = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSystemPrompt.isEmpty {
+            let promptURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("sopilot-vlm-system-\(UUID().uuidString).txt")
+            try trimmedSystemPrompt.write(to: promptURL, atomically: true, encoding: .utf8)
+            systemPromptURL = promptURL
         }
 
         var arguments = [
@@ -260,6 +279,9 @@ final class VLMModelService: ObservableObject {
         ]
         for frameURL in frameURLs {
             arguments.append(contentsOf: ["--frame-file", frameURL.path])
+        }
+        if let systemPromptURL {
+            arguments.append(contentsOf: ["--system-prompt-file", systemPromptURL.path])
         }
 
         let process = Process()
