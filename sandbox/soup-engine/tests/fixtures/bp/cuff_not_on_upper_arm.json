@@ -1,0 +1,19 @@
+{
+  "name": "cuff_not_on_upper_arm",
+  "detections": [
+    {"id": "mon_001", "frame_id": "frame_001", "timestamp_sec": 1.0, "tag": "blood_pressure_monitor", "confidence": 0.92, "bbox": {"x1": 80, "y1": 80, "x2": 220, "y2": 190}},
+    {"id": "sleeve_004", "frame_id": "frame_004", "timestamp_sec": 4.0, "tag": "sleeve", "confidence": 0.88, "bbox": {"x1": 310, "y1": 165, "x2": 430, "y2": 205}},
+    {"id": "arm_004", "frame_id": "frame_004", "timestamp_sec": 4.0, "tag": "upper_arm", "confidence": 0.91, "bbox": {"x1": 300, "y1": 145, "x2": 440, "y2": 300}},
+    {"id": "cuff_006", "frame_id": "frame_006", "timestamp_sec": 6.0, "tag": "cuff", "confidence": 0.89, "bbox": {"x1": 520, "y1": 165, "x2": 620, "y2": 215}},
+    {"id": "arm_006", "frame_id": "frame_006", "timestamp_sec": 6.0, "tag": "upper_arm", "confidence": 0.93, "bbox": {"x1": 300, "y1": 145, "x2": 440, "y2": 300}}
+  ],
+  "events": [
+    {"id": "evt_measure", "type": "measure_started", "timestamp_sec": 8.0, "confidence": 1.0, "source": "demo_marker"},
+    {"id": "evt_done", "type": "measurement_done", "timestamp_sec": 12.0, "confidence": 1.0, "source": "demo_marker"}
+  ],
+  "expected": {
+    "status": "failed",
+    "failed_steps": ["S2", "S3", "S4"],
+    "uncertain_steps": []
+  }
+}
