@@ -22,6 +22,14 @@ Current worktree finds models/yolo26n.npz via YoloMLXWorker.swift (line 152).
 9692 fails to find a YOLO model, so YoloMLXWorker.makeDefault() returns nil.
 Then FaceDetector.swift (line 50) falls back to Apple Vision face detection, whose boxes look correct.
 The current worktree is not using a real face model. It is using generic COCO yolo26n.npz, where class 0 is person, then the worker approximates a face box from the top of the person box. That heuristic is here: yolo_mlx_face_worker.py (line 79). The default face height is only 0.22 * person_h at line 154 (line 154), which explains why the green box is smaller than the actual face.
+## Yolo model training
+We built the .npz for you here:
+
+/Users/zhensong/project/SoPilot/images/BP_sc_runs/train/bp_sc_yolo26n.npz
+
+It was converted from:
+
+/Users/zhensong/project/SoPilot/images/BP_sc_runs/train/best.safetensors
 
 ## Data flow
 

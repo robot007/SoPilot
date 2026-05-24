@@ -12,6 +12,13 @@ build/
 venv/
 env/
 
+**/*.jpg
+**/*.JPG
+**/*.jpeg
+**/*.JPEG
+**/*.png
+**/*.PNG
+
 # NOTE: leading-slash anchors below are intentional. Without them, plain
 # patterns like "datasets/" / "models/" / "images/" silently match
 # "src/yolo26mlx/cfg/datasets/", "src/yolo26mlx/cfg/models/" and any

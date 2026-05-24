@@ -1,0 +1,184 @@
+SOUP sleeve/cuff video integration
+===================================
+repo_root=/Users/zhensong/project/SoPilot
+video_path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP_correct.mp4
+model_path=/Users/zhensong/project/SoPilot/images/BP_sc_runs/train/bp_sc_yolo26n.npz
+class_map_path=/Users/zhensong/project/SoPilot/images/BP_sc_dataset/classes.txt
+soup_path=/Users/zhensong/project/SoPilot/sandbox/soup-engine/tests/fixtures/bp/bp_monitor.soup.json
+class_map={0: 'cuff', 1: 'sleeve', 2: 'upper_arm'}
+raw_frame_count=54
+frame frame_id=frame_000.00s timestamp=0.00 retained_detections=0
+detection=id=cuff_001_00 frame=frame_001.00s timestamp=1.00 tag=cuff confidence=0.229 bbox=[236.8,109.2,483.3,260.0] source=yolo_bp_sc
+detection=id=sleeve_001_01 frame=frame_001.00s timestamp=1.00 tag=sleeve confidence=0.219 bbox=[236.8,109.2,483.3,260.0] source=yolo_bp_sc
+frame frame_id=frame_001.00s timestamp=1.00 retained_detections=2
+detection=id=cuff_002_00 frame=frame_002.00s timestamp=2.00 tag=cuff confidence=0.263 bbox=[170.4,162.4,471.4,255.3] source=yolo_bp_sc
+frame frame_id=frame_002.00s timestamp=2.00 retained_detections=1
+detection=id=cuff_003_00 frame=frame_003.00s timestamp=3.00 tag=cuff confidence=0.700 bbox=[236.5,91.6,453.9,250.1] source=yolo_bp_sc
+frame frame_id=frame_003.00s timestamp=3.00 retained_detections=1
+detection=id=cuff_004_00 frame=frame_004.00s timestamp=4.00 tag=cuff confidence=0.787 bbox=[235.4,66.0,460.1,245.7] source=yolo_bp_sc
+frame frame_id=frame_004.00s timestamp=4.00 retained_detections=1
+detection=id=cuff_005_00 frame=frame_005.00s timestamp=5.00 tag=cuff confidence=0.863 bbox=[236.4,70.5,461.7,239.7] source=yolo_bp_sc
+frame frame_id=frame_005.00s timestamp=5.00 retained_detections=1
+detection=id=cuff_006_00 frame=frame_006.00s timestamp=6.00 tag=cuff confidence=0.227 bbox=[101.4,196.9,484.4,315.8] source=yolo_bp_sc
+frame frame_id=frame_006.00s timestamp=6.00 retained_detections=1
+detection=id=cuff_007_00 frame=frame_007.00s timestamp=7.00 tag=cuff confidence=0.633 bbox=[208.7,2.2,349.7,136.4] source=yolo_bp_sc
+frame frame_id=frame_007.00s timestamp=7.00 retained_detections=1
+detection=id=cuff_008_00 frame=frame_008.01s timestamp=8.01 tag=cuff confidence=0.802 bbox=[241.5,52.7,347.0,217.5] source=yolo_bp_sc
+frame frame_id=frame_008.01s timestamp=8.01 retained_detections=1
+detection=id=cuff_009_00 frame=frame_009.01s timestamp=9.01 tag=cuff confidence=0.675 bbox=[209.4,24.0,324.2,212.8] source=yolo_bp_sc
+frame frame_id=frame_009.01s timestamp=9.01 retained_detections=1
+detection=id=cuff_010_00 frame=frame_010.01s timestamp=10.01 tag=cuff confidence=0.651 bbox=[204.4,55.2,338.7,178.4] source=yolo_bp_sc
+detection=id=cuff_010_01 frame=frame_010.01s timestamp=10.01 tag=cuff confidence=0.243 bbox=[209.8,53.8,303.8,167.1] source=yolo_bp_sc
+frame frame_id=frame_010.01s timestamp=10.01 retained_detections=2
+detection=id=cuff_011_00 frame=frame_011.01s timestamp=11.01 tag=cuff confidence=0.645 bbox=[119.9,92.6,272.1,234.5] source=yolo_bp_sc
+frame frame_id=frame_011.01s timestamp=11.01 retained_detections=1
+detection=id=cuff_012_00 frame=frame_012.01s timestamp=12.01 tag=cuff confidence=0.723 bbox=[161.2,97.8,283.2,214.1] source=yolo_bp_sc
+frame frame_id=frame_012.01s timestamp=12.01 retained_detections=1
+detection=id=cuff_013_00 frame=frame_013.01s timestamp=13.01 tag=cuff confidence=0.811 bbox=[191.0,98.6,351.9,220.2] source=yolo_bp_sc
+frame frame_id=frame_013.01s timestamp=13.01 retained_detections=1
+detection=id=cuff_014_00 frame=frame_014.01s timestamp=14.01 tag=cuff confidence=0.659 bbox=[233.4,91.2,388.9,214.7] source=yolo_bp_sc
+frame frame_id=frame_014.01s timestamp=14.01 retained_detections=1
+detection=id=cuff_015_00 frame=frame_015.01s timestamp=15.01 tag=cuff confidence=0.740 bbox=[218.7,88.4,360.3,208.9] source=yolo_bp_sc
+frame frame_id=frame_015.01s timestamp=15.01 retained_detections=1
+detection=id=cuff_016_00 frame=frame_016.01s timestamp=16.01 tag=cuff confidence=0.797 bbox=[233.1,94.0,363.9,205.6] source=yolo_bp_sc
+frame frame_id=frame_016.01s timestamp=16.01 retained_detections=1
+detection=id=cuff_017_00 frame=frame_017.01s timestamp=17.01 tag=cuff confidence=0.691 bbox=[225.3,57.0,356.8,183.3] source=yolo_bp_sc
+frame frame_id=frame_017.01s timestamp=17.01 retained_detections=1
+detection=id=cuff_018_00 frame=frame_018.01s timestamp=18.01 tag=cuff confidence=0.829 bbox=[243.1,72.8,374.8,223.4] source=yolo_bp_sc
+frame frame_id=frame_018.01s timestamp=18.01 retained_detections=1
+detection=id=cuff_019_00 frame=frame_019.01s timestamp=19.01 tag=cuff confidence=0.749 bbox=[230.2,75.5,356.0,217.3] source=yolo_bp_sc
+frame frame_id=frame_019.01s timestamp=19.01 retained_detections=1
+detection=id=cuff_020_00 frame=frame_020.01s timestamp=20.01 tag=cuff confidence=0.804 bbox=[135.9,64.0,283.8,273.0] source=yolo_bp_sc
+frame frame_id=frame_020.01s timestamp=20.01 retained_detections=1
+detection=id=cuff_021_00 frame=frame_021.01s timestamp=21.01 tag=cuff confidence=0.845 bbox=[210.2,55.8,377.6,298.0] source=yolo_bp_sc
+frame frame_id=frame_021.01s timestamp=21.01 retained_detections=1
+detection=id=cuff_022_00 frame=frame_022.02s timestamp=22.02 tag=cuff confidence=0.899 bbox=[231.0,42.9,467.6,318.5] source=yolo_bp_sc
+frame frame_id=frame_022.02s timestamp=22.02 retained_detections=1
+detection=id=cuff_023_00 frame=frame_023.02s timestamp=23.02 tag=cuff confidence=0.911 bbox=[195.3,44.5,408.3,318.8] source=yolo_bp_sc
+frame frame_id=frame_023.02s timestamp=23.02 retained_detections=1
+detection=id=cuff_024_00 frame=frame_024.02s timestamp=24.02 tag=cuff confidence=0.928 bbox=[187.0,59.1,389.4,318.9] source=yolo_bp_sc
+frame frame_id=frame_024.02s timestamp=24.02 retained_detections=1
+detection=id=cuff_025_00 frame=frame_025.02s timestamp=25.02 tag=cuff confidence=0.908 bbox=[184.1,52.9,382.9,314.4] source=yolo_bp_sc
+frame frame_id=frame_025.02s timestamp=25.02 retained_detections=1
+detection=id=cuff_026_00 frame=frame_026.02s timestamp=26.02 tag=cuff confidence=0.896 bbox=[192.3,50.3,395.0,309.2] source=yolo_bp_sc
+frame frame_id=frame_026.02s timestamp=26.02 retained_detections=1
+detection=id=cuff_027_00 frame=frame_027.02s timestamp=27.02 tag=cuff confidence=0.897 bbox=[193.6,50.1,396.4,309.9] source=yolo_bp_sc
+frame frame_id=frame_027.02s timestamp=27.02 retained_detections=1
+detection=id=cuff_028_00 frame=frame_028.02s timestamp=28.02 tag=cuff confidence=0.892 bbox=[194.2,53.6,392.5,307.8] source=yolo_bp_sc
+frame frame_id=frame_028.02s timestamp=28.02 retained_detections=1
+detection=id=cuff_029_00 frame=frame_029.02s timestamp=29.02 tag=cuff confidence=0.892 bbox=[198.8,54.5,394.1,304.4] source=yolo_bp_sc
+frame frame_id=frame_029.02s timestamp=29.02 retained_detections=1
+detection=id=cuff_030_00 frame=frame_030.02s timestamp=30.02 tag=cuff confidence=0.897 bbox=[181.5,68.1,369.9,309.5] source=yolo_bp_sc
+frame frame_id=frame_030.02s timestamp=30.02 retained_detections=1
+detection=id=cuff_031_00 frame=frame_031.02s timestamp=31.02 tag=cuff confidence=0.884 bbox=[184.1,55.3,371.9,301.7] source=yolo_bp_sc
+frame frame_id=frame_031.02s timestamp=31.02 retained_detections=1
+detection=id=cuff_032_00 frame=frame_032.02s timestamp=32.02 tag=cuff confidence=0.877 bbox=[192.0,54.7,378.0,302.7] source=yolo_bp_sc
+frame frame_id=frame_032.02s timestamp=32.02 retained_detections=1
+detection=id=cuff_033_00 frame=frame_033.02s timestamp=33.02 tag=cuff confidence=0.873 bbox=[187.1,57.9,373.8,301.4] source=yolo_bp_sc
+frame frame_id=frame_033.02s timestamp=33.02 retained_detections=1
+detection=id=cuff_034_00 frame=frame_034.02s timestamp=34.02 tag=cuff confidence=0.886 bbox=[183.8,51.9,375.8,299.1] source=yolo_bp_sc
+frame frame_id=frame_034.02s timestamp=34.02 retained_detections=1
+detection=id=cuff_035_00 frame=frame_035.02s timestamp=35.02 tag=cuff confidence=0.898 bbox=[177.1,49.6,368.7,299.9] source=yolo_bp_sc
+frame frame_id=frame_035.02s timestamp=35.02 retained_detections=1
+detection=id=cuff_036_00 frame=frame_036.03s timestamp=36.03 tag=cuff confidence=0.893 bbox=[174.2,49.9,365.7,301.2] source=yolo_bp_sc
+frame frame_id=frame_036.03s timestamp=36.03 retained_detections=1
+detection=id=cuff_037_00 frame=frame_037.03s timestamp=37.03 tag=cuff confidence=0.898 bbox=[175.1,48.0,369.0,299.6] source=yolo_bp_sc
+frame frame_id=frame_037.03s timestamp=37.03 retained_detections=1
+detection=id=cuff_038_00 frame=frame_038.03s timestamp=38.03 tag=cuff confidence=0.897 bbox=[169.3,48.4,367.4,299.6] source=yolo_bp_sc
+frame frame_id=frame_038.03s timestamp=38.03 retained_detections=1
+detection=id=cuff_039_00 frame=frame_039.03s timestamp=39.03 tag=cuff confidence=0.874 bbox=[177.2,49.3,367.6,301.0] source=yolo_bp_sc
+frame frame_id=frame_039.03s timestamp=39.03 retained_detections=1
+detection=id=cuff_040_00 frame=frame_040.03s timestamp=40.03 tag=cuff confidence=0.885 bbox=[170.3,51.1,365.9,300.8] source=yolo_bp_sc
+frame frame_id=frame_040.03s timestamp=40.03 retained_detections=1
+detection=id=cuff_041_00 frame=frame_041.03s timestamp=41.03 tag=cuff confidence=0.879 bbox=[170.4,49.2,367.8,298.3] source=yolo_bp_sc
+frame frame_id=frame_041.03s timestamp=41.03 retained_detections=1
+detection=id=cuff_042_00 frame=frame_042.03s timestamp=42.03 tag=cuff confidence=0.876 bbox=[169.1,52.2,361.0,302.5] source=yolo_bp_sc
+frame frame_id=frame_042.03s timestamp=42.03 retained_detections=1
+detection=id=cuff_043_00 frame=frame_043.03s timestamp=43.03 tag=cuff confidence=0.897 bbox=[172.0,50.8,359.7,299.3] source=yolo_bp_sc
+frame frame_id=frame_043.03s timestamp=43.03 retained_detections=1
+detection=id=cuff_044_00 frame=frame_044.03s timestamp=44.03 tag=cuff confidence=0.889 bbox=[166.9,41.9,362.5,292.8] source=yolo_bp_sc
+frame frame_id=frame_044.03s timestamp=44.03 retained_detections=1
+detection=id=cuff_045_00 frame=frame_045.03s timestamp=45.03 tag=cuff confidence=0.880 bbox=[167.2,45.6,358.4,287.5] source=yolo_bp_sc
+frame frame_id=frame_045.03s timestamp=45.03 retained_detections=1
+detection=id=cuff_046_00 frame=frame_046.03s timestamp=46.03 tag=cuff confidence=0.892 bbox=[164.9,40.7,352.8,282.2] source=yolo_bp_sc
+frame frame_id=frame_046.03s timestamp=46.03 retained_detections=1
+detection=id=cuff_047_00 frame=frame_047.03s timestamp=47.03 tag=cuff confidence=0.898 bbox=[167.0,40.0,365.4,278.3] source=yolo_bp_sc
+frame frame_id=frame_047.03s timestamp=47.03 retained_detections=1
+detection=id=cuff_048_00 frame=frame_048.03s timestamp=48.03 tag=cuff confidence=0.904 bbox=[172.5,45.1,364.9,280.4] source=yolo_bp_sc
+frame frame_id=frame_048.03s timestamp=48.03 retained_detections=1
+detection=id=cuff_049_00 frame=frame_049.03s timestamp=49.03 tag=cuff confidence=0.902 bbox=[177.3,43.8,373.7,276.6] source=yolo_bp_sc
+frame frame_id=frame_049.03s timestamp=49.03 retained_detections=1
+detection=id=cuff_050_00 frame=frame_050.04s timestamp=50.04 tag=cuff confidence=0.903 bbox=[181.9,46.6,376.7,277.5] source=yolo_bp_sc
+frame frame_id=frame_050.04s timestamp=50.04 retained_detections=1
+detection=id=cuff_051_00 frame=frame_051.04s timestamp=51.04 tag=cuff confidence=0.894 bbox=[188.6,52.5,380.7,280.5] source=yolo_bp_sc
+frame frame_id=frame_051.04s timestamp=51.04 retained_detections=1
+detection=id=cuff_052_00 frame=frame_052.04s timestamp=52.04 tag=cuff confidence=0.899 bbox=[185.6,51.5,378.6,282.9] source=yolo_bp_sc
+frame frame_id=frame_052.04s timestamp=52.04 retained_detections=1
+detection=id=cuff_053_00 frame=frame_053.04s timestamp=53.04 tag=cuff confidence=0.898 bbox=[188.7,54.6,378.2,290.8] source=yolo_bp_sc
+frame frame_id=frame_053.04s timestamp=53.04 retained_detections=1
+overlay frame_index=000 timestamp=0.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_000.00s.jpg
+overlay frame_index=001 timestamp=1.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_001.00s.jpg
+overlay frame_index=002 timestamp=2.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_002.00s.jpg
+overlay frame_index=003 timestamp=3.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_003.00s.jpg
+overlay frame_index=004 timestamp=4.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_004.00s.jpg
+overlay frame_index=005 timestamp=5.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_005.00s.jpg
+overlay frame_index=006 timestamp=6.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_006.00s.jpg
+overlay frame_index=007 timestamp=7.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_007.00s.jpg
+overlay frame_index=008 timestamp=8.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_008.01s.jpg
+overlay frame_index=009 timestamp=9.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_009.01s.jpg
+overlay frame_index=010 timestamp=10.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_010.01s.jpg
+overlay frame_index=011 timestamp=11.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_011.01s.jpg
+overlay frame_index=012 timestamp=12.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_012.01s.jpg
+overlay frame_index=013 timestamp=13.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_013.01s.jpg
+overlay frame_index=014 timestamp=14.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_014.01s.jpg
+overlay frame_index=015 timestamp=15.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_015.01s.jpg
+overlay frame_index=016 timestamp=16.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_016.01s.jpg
+overlay frame_index=017 timestamp=17.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_017.01s.jpg
+overlay frame_index=018 timestamp=18.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_018.01s.jpg
+overlay frame_index=019 timestamp=19.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_019.01s.jpg
+overlay frame_index=020 timestamp=20.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_020.01s.jpg
+overlay frame_index=021 timestamp=21.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_021.01s.jpg
+overlay frame_index=022 timestamp=22.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_022.02s.jpg
+overlay frame_index=023 timestamp=23.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_023.02s.jpg
+overlay frame_index=024 timestamp=24.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_024.02s.jpg
+overlay frame_index=025 timestamp=25.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_025.02s.jpg
+overlay frame_index=026 timestamp=26.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_026.02s.jpg
+overlay frame_index=027 timestamp=27.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_027.02s.jpg
+overlay frame_index=028 timestamp=28.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_028.02s.jpg
+overlay frame_index=029 timestamp=29.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_029.02s.jpg
+overlay frame_index=030 timestamp=30.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_030.02s.jpg
+overlay frame_index=031 timestamp=31.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_031.02s.jpg
+overlay frame_index=032 timestamp=32.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_032.02s.jpg
+overlay frame_index=033 timestamp=33.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_033.02s.jpg
+overlay frame_index=034 timestamp=34.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_034.02s.jpg
+overlay frame_index=035 timestamp=35.02 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_035.02s.jpg
+overlay frame_index=036 timestamp=36.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_036.03s.jpg
+overlay frame_index=037 timestamp=37.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_037.03s.jpg
+overlay frame_index=038 timestamp=38.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_038.03s.jpg
+overlay frame_index=039 timestamp=39.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_039.03s.jpg
+overlay frame_index=040 timestamp=40.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_040.03s.jpg
+overlay frame_index=041 timestamp=41.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_041.03s.jpg
+overlay frame_index=042 timestamp=42.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_042.03s.jpg
+overlay frame_index=043 timestamp=43.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_043.03s.jpg
+overlay frame_index=044 timestamp=44.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_044.03s.jpg
+overlay frame_index=045 timestamp=45.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_045.03s.jpg
+overlay frame_index=046 timestamp=46.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_046.03s.jpg
+overlay frame_index=047 timestamp=47.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_047.03s.jpg
+overlay frame_index=048 timestamp=48.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_048.03s.jpg
+overlay frame_index=049 timestamp=49.03 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_049.03s.jpg
+overlay frame_index=050 timestamp=50.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_050.04s.jpg
+overlay frame_index=051 timestamp=51.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_051.04s.jpg
+overlay frame_index=052 timestamp=52.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_052.04s.jpg
+overlay frame_index=053 timestamp=53.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_053.04s.jpg
+overlay_frame_count=54
+synthetic_detection=id=synthetic_blood_pressure_monitor_000 frame=frame_000.00s timestamp=0.00 tag=blood_pressure_monitor confidence=1.000 bbox=[0.0,0.0,568.0,320.0] source=synthetic_test_proxy
+synthetic_detection=id=synthetic_upper_arm_proxy_frame_053_04s frame=frame_053.04s timestamp=53.04 tag=upper_arm confidence=0.898 bbox=[188.7,54.6,378.2,290.8] source=synthetic_test_proxy
+synthetic_event={'id': 'evt_measure_started_from_video', 'type': 'measure_started', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'fallback_last_sampled_frame_with_upper_arm_proxy'}}
+synthetic_event={'id': 'evt_measurement_done_from_video', 'type': 'measurement_done', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'last_sampled_frame'}}
+SOUP state=Start tag=tag=blood_pressure_monitor event=measure_started rule=S0_monitor_visible_before_measure decision=passed confidence=1.0 completed_at=0.0 message=Detected blood_pressure_monitor before measure_started.
+SOUP state=Roll sleeve tag=conditions=not_exists(tag=sleeve);overlap(source_tag=sleeve,target_tag=upper_arm) rule=S1_sleeve_clear_or_on_upper_arm decision=passed confidence=None completed_at=None message=At least one condition passed for S1.
+SOUP state=Put Cuff On Upper Arm tag=source_tag=cuff target_tag=upper_arm rule=S2_cuff_overlaps_upper_arm decision=passed confidence=0.8981239199638367 completed_at=53.03762345679012 message=cuff overlapped upper_arm.
+SOUP state=Measure tag=event=measure_started rule=S3_measure_after_setup decision=passed confidence=None completed_at=53.03762345679012 message=measure_started occurred after all required steps.
+SOUP state=Done tag=event=measurement_done rule=S4_done_after_measure decision=passed confidence=None completed_at=53.03762345679012 message=measurement_done occurred after all required steps.
+FINAL_SOUP_STATUS=passed
+TASK_FINISHED=true
