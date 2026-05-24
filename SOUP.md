@@ -143,7 +143,12 @@ Input / I/O Layer
 The Input / I/O Layer handles external data entering the system. It loads .soup.json SOP definitions, receives detection streams from YOLO or VLM outputs, and accepts event streams from UI, sensors, or device APIs. The loader converts raw JSON into validated SoupPackage objects. This layer separates raw file/data ingestion from the rule engine’s internal logic.
 
 ## SOUP Engine Details: Object Relationships
-@TODO we often need to 
+@TODO we often need to decide a task is finished or not based on positions of Yolo identified objects. It is a tedious tasks to convert camera image domain positions to real positions and compare object's relative positions. For example here are the Steps for a BP (blood pressure measurement process)
+
+'doc/img/cuff-ipad-table.png'
+Fig. with cuff on top of sleeve, the Rule Engine can draw conslution that the user forgot to roll up the sleeve, and have to redo the process from the beginning. 
+
+@TODO for the 
 
 ## SOUP Package Design
 
@@ -616,27 +621,45 @@ Tests make packages more trustworthy and easier to publish.
 
 
 
-## SOUP Engine Architecture 
-Below is a concise layer-by-layer architecture description based on your diagram text. 
+## SOUP Engine Unit Test Case
 
-**Consumer Layer**
-The Consumer Layer contains all user-facing or integration-facing entry points. `FaceBoxDemo` provides a Swift-based application interface, while CLI tools support Python-based command-line workflows. External apps and integration tests can also call the system through Python imports. This layer should stay lightweight and should not contain core rule logic. Its role is to collect inputs, trigger evaluations, and display results.
-
-**Public API Layer**
-The Public API Layer exposes the stable interface of the `sopilot_rules` package. Users import `RuleEngine`, `load_soup`, `validate_soup`, and schema types such as `Detection`, `Event`, and `RunResult`. This layer hides internal implementation details and gives downstream apps a clean contract. It is mainly implemented through `__init__.py` and `schema.py`.
-
-**Engine / Orchestration Layer**
-The Engine Layer is centered on `RuleEngine`. It receives detections and events, normalizes them, evaluates rules in the configured order, fills missing required steps, computes the final status, and produces a `RunResult`. It also builds evidence references and privacy logs. This is the main orchestration layer that turns raw observations into structured SOP evaluation results.
-
-**Rule Evaluator Layer**
-The Rule Evaluator Layer dispatches each rule to a typed evaluator through a registry. Rule types include `exists_before`, `near_before`, `overlap`, `above`, `after_all_required`, and `any_of`. Each evaluator receives an `EvaluationContext` containing detections, events, prior results, and configuration. This makes the rule system extensible: new rule types can be added without changing the main engine.
-
-**Schema / Contract Layer**
-The Schema Layer defines the core data contracts used across the system. Important models include `SoupPackage`, `Detection`, `Event`, `RunResult`, `StepResult`, `EvidenceRef`, `PrivacyLog`, and `BBox`. These models provide type safety, validation, and consistent data structure for all layers. A strict schema layer is especially important because detections, VLM outputs, and UI events may come from different sources.
-
-**Support Services Layer**
-The Support Services Layer provides reusable utilities used by the engine and rule evaluators. The normalizer validates and sorts detections/events. The evidence module builds references from rule results. The privacy module classifies local versus cloud VLM usage. The geometry module handles bounding-box operations such as IoU, center point, area, and relative position checks like `above`.
-
-**Input / I/O Layer**
-The Input / I/O Layer handles external data entering the system. It loads `.soup.json` SOP definitions, receives detection streams from YOLO or VLM outputs, and accepts event streams from UI, sensors, or device APIs. The loader converts raw JSON into validated `SoupPackage` objects. This layer separates raw file/data ingestion from the rule engine’s internal logic.
-
+@TODO with this Yolo log, the Rule Engine find the 
+```
+SOUP sleeve/cuff video integration
+===================================
+repo_root=/Users/zhensong/project/SoPilot
+video_path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP_correct.mp4
+model_path=/Users/zhensong/project/SoPilot/images/BP_sc_runs/train/bp_sc_yolo26n.npz
+class_map_path=/Users/zhensong/project/SoPilot/images/BP_sc_dataset/classes.txt
+soup_path=/Users/zhensong/project/SoPilot/sandbox/soup-engine/tests/fixtures/bp/bp_monitor.soup.json
+class_map={0: 'cuff', 1: 'sleeve', 2: 'upper_arm'}
+raw_frame_count=54
+frame frame_id=frame_000.00s timestamp=0.00 retained_detections=0
+detection=id=cuff_001_00 frame=frame_001.00s timestamp=1.00 tag=cuff confidence=0.229 bbox=[236.8,109.2,483.3,260.0] source=yolo_bp_sc
+detection=id=sleeve_001_01 frame=frame_001.00s timestamp=1.00 tag=sleeve confidence=0.219 bbox=[236.8,109.2,483.3,260.0] source=yolo_bp_sc
+frame frame_id=frame_001.00s timestamp=1.00 retained_detections=2
+detection=id=cuff_002_00 frame=frame_002.00s timestamp=2.00 tag=cuff confidence=0.263 bbox=[170.4,162.4,471.4,255.3] source=yolo_bp_sc
+frame frame_id=frame_002.00s timestamp=2.00 retained_detections=1
+detection=id=cuff_003_00 frame=frame_003.00s timestamp=3.00 tag=cuff confidence=0.700 bbox=[236.5,91.6,453.9,250.1] source=yolo_bp_sc
+frame frame_id=frame_003.00s timestamp=3.00 retained_detections=1
+detection=id=cuff_004_00 frame=frame_004.00s timestamp=4.00 tag=cuff confidence=0.787 bbox=[235.4,66.0,460.1,245.7] source=yolo_bp_sc
+frame frame_id=frame_004.00s timestamp=4.00 retained_detections=1
+detection=id=cuff_005_00 frame=frame_005.00s timestamp=5.00 tag=cuff confidence=0.863 bbox=[236.4,70.5,461.7,239.7] source=yolo_bp_sc
+frame frame_id=frame_005.00s timestamp=5.00 retained_detections=1
+...
+...
+overlay frame_index=051 timestamp=51.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_051.04s.jpg
+overlay frame_index=052 timestamp=52.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_052.04s.jpg
+overlay frame_index=053 timestamp=53.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_053.04s.jpg
+overlay_frame_count=54
+synthetic_detection=id=synthetic_blood_pressure_monitor_000 frame=frame_000.00s timestamp=0.00 tag=blood_pressure_monitor confidence=1.000 bbox=[0.0,0.0,568.0,320.0] source=synthetic_test_proxy
+synthetic_detection=id=synthetic_upper_arm_proxy_frame_053_04s frame=frame_053.04s timestamp=53.04 tag=upper_arm confidence=0.898 bbox=[188.7,54.6,378.2,290.8] source=synthetic_test_proxy
+synthetic_event={'id': 'evt_measure_started_from_video', 'type': 'measure_started', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'fallback_last_sampled_frame_with_upper_arm_proxy'}}
+synthetic_event={'id': 'evt_measurement_done_from_video', 'type': 'measurement_done', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'last_sampled_frame'}}
+SOUP state=Start tag=tag=blood_pressure_monitor event=measure_started rule=S0_monitor_visible_before_measure decision=passed confidence=1.0 completed_at=0.0 message=Detected blood_pressure_monitor before measure_started.
+SOUP state=Roll sleeve tag=conditions=not_exists(tag=sleeve);overlap(source_tag=sleeve,target_tag=upper_arm) rule=S1_sleeve_clear_or_on_upper_arm decision=passed confidence=None completed_at=None message=At least one condition passed for S1.
+SOUP state=Put Cuff On Upper Arm tag=source_tag=cuff target_tag=upper_arm rule=S2_cuff_overlaps_upper_arm decision=passed confidence=0.8981239199638367 completed_at=53.03762345679012 message=cuff overlapped upper_arm.
+SOUP state=Measure tag=event=measure_started rule=S3_measure_after_setup decision=passed confidence=None completed_at=53.03762345679012 message=measure_started occurred after all required steps.
+SOUP state=Done tag=event=measurement_done rule=S4_done_after_measure decision=passed confidence=None completed_at=53.03762345679012 message=measurement_done occurred after all required steps.
+FINAL_SOUP_STATUS=passed
+```

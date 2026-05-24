@@ -18,6 +18,8 @@ env/
 **/*.JPEG
 **/*.png
 **/*.PNG
+**/*.zip
+**/*.mp4
 
 # NOTE: leading-slash anchors below are intentional. Without them, plain
 # patterns like "datasets/" / "models/" / "images/" silently match

@@ -11,18 +11,40 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SOUP_ENGINE_ROOT = REPO_ROOT / "sandbox" / "soup-engine"
-VIDEO_PATH = REPO_ROOT / "sandbox" / "BP-video" / "BP_correct.mp4"
-RAW_FRAME_DIR = REPO_ROOT / "sandbox" / "BP-video" / "BP-sc-test-raw"
-OVERLAY_DIR = REPO_ROOT / "sandbox" / "BP-video" / "BP-sc-test-yolo-overlay"
-LOG_PATH = REPO_ROOT / "sandbox" / "BP-video" / "test_log_SOUP_sleeve.log"
+VIDEO_PATH = Path(
+    os.environ.get(
+        "SOUP_VIDEO_PATH",
+        str(REPO_ROOT / "sandbox" / "BP-video" / "BP_correct.mp4"),
+    )
+)
+RAW_FRAME_DIR = Path(
+    os.environ.get(
+        "SOUP_RAW_FRAME_DIR",
+        str(REPO_ROOT / "sandbox" / "BP-video" / "BP-sc-test-raw"),
+    )
+)
+OVERLAY_DIR = Path(
+    os.environ.get(
+        "SOUP_OVERLAY_DIR",
+        str(REPO_ROOT / "sandbox" / "BP-video" / "BP-sc-test-yolo-overlay"),
+    )
+)
+LOG_PATH = Path(
+    os.environ.get(
+        "SOUP_LOG_PATH",
+        str(REPO_ROOT / "sandbox" / "BP-video" / "test_log_SOUP_sleeve.log"),
+    )
+)
 MODEL_PATH = REPO_ROOT / "images" / "BP_sc_runs" / "train" / "bp_sc_yolo26n.npz"
 CLASS_MAP_PATH = REPO_ROOT / "images" / "BP_sc_dataset" / "classes.txt"
 SOUP_PATH = SOUP_ENGINE_ROOT / "tests" / "fixtures" / "bp" / "bp_monitor.soup.json"
 FRAME_RATE = 1.0
-EXPECTED_FRAME_COUNT = 54
+EXPECTED_FRAME_COUNT = int(os.environ.get("SOUP_EXPECTED_FRAME_COUNT", "54"))
 YOLO_CONFIDENCE = 0.1
 SOUP_MIN_CONFIDENCE = 0.5
 SETUP_OVERLAP_RATIO = 0.25
+RUN_ID = os.environ.get("SOUP_RUN_ID", "BP_correct_video")
+ASSERT_FINISHED = os.environ.get("SOUP_ASSERT_FINISHED", "1") != "0"
 
 
 def _ensure_import_paths() -> None:
@@ -58,6 +80,8 @@ class SOUPSleeveVideoIntegrationTests(unittest.TestCase):
             "model_path=%s" % MODEL_PATH,
             "class_map_path=%s" % CLASS_MAP_PATH,
             "soup_path=%s" % SOUP_PATH,
+            "run_id=%s" % RUN_ID,
+            "assert_finished=%s" % str(ASSERT_FINISHED).lower(),
         ]
 
         self._assert_required_files()
@@ -157,7 +181,7 @@ class SOUPSleeveVideoIntegrationTests(unittest.TestCase):
         evaluation = _evaluate_soup(
             detections=soup_detections,
             events=events,
-            run_id="BP_correct_video",
+            run_id=RUN_ID,
         )
 
         step_names = evaluation["step_names"]
@@ -188,7 +212,11 @@ class SOUPSleeveVideoIntegrationTests(unittest.TestCase):
 
         self.assertIn("FINAL_SOUP_STATUS=", LOG_PATH.read_text(encoding="utf-8"))
         self.assertIn("TASK_FINISHED=", LOG_PATH.read_text(encoding="utf-8"))
-        self.assertTrue(task_finished, "BP_correct.mp4 did not pass the BP SOUP workflow.")
+        if ASSERT_FINISHED:
+            self.assertTrue(
+                task_finished,
+                "%s did not pass the BP SOUP workflow." % VIDEO_PATH.name,
+            )
 
     def _assert_required_files(self) -> None:
         missing = [
