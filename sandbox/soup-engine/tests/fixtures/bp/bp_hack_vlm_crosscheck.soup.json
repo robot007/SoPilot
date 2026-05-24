@@ -1,0 +1,59 @@
+{
+  "schema_version": "0.1.0",
+  "package": {
+    "id": "bp_hack_vlm_crosscheck_checker",
+    "name": "Blood Pressure Hack VLM Cross-Check",
+    "version": "0.1.0",
+    "category": "Healthcare Workflow",
+    "creator": "SoPilot",
+    "description": "Checks a BP workflow with YOLO cuff/sleeve detections and one final local FastVLM upper-arm confirmation.",
+    "safety_note": "For workflow assistance only. Not medical diagnosis."
+  },
+  "runtime": {
+    "decision_policy": {
+      "final_decision": "local_rule_engine",
+      "cloud_vlm_allowed": false,
+      "local_vlm_allowed": true
+    }
+  },
+  "tags": [
+    {"id": "cuff", "name": "Arm cuff"},
+    {"id": "sleeve", "name": "Sleeve"}
+  ],
+  "steps": [
+    {"id": "S1", "name": "Detect cuff", "required": true, "order": 1},
+    {"id": "S2", "name": "Detect sleeve", "required": true, "order": 2},
+    {"id": "S3", "name": "Confirm cuff on upper arm", "required": true, "order": 3}
+  ],
+  "rules": [
+    {
+      "id": "S1_cuff_visible_before_vlm",
+      "step_id": "S1",
+      "type": "exists_before",
+      "tag": "cuff",
+      "event": "vlm_cuff_on_upper_arm_answer",
+      "min_confidence": 0.1,
+      "failure_message": "The cuff was not detected before the VLM cross-check."
+    },
+    {
+      "id": "S2_sleeve_visible_before_vlm",
+      "step_id": "S2",
+      "type": "exists_before",
+      "tag": "sleeve",
+      "event": "vlm_cuff_on_upper_arm_answer",
+      "min_confidence": 0.1,
+      "failure_message": "The sleeve was not detected before the VLM cross-check."
+    },
+    {
+      "id": "S3_vlm_cuff_on_upper_arm",
+      "step_id": "S3",
+      "type": "vlm_answer",
+      "event": "vlm_cuff_on_upper_arm_answer",
+      "question": "Has the person put any object on upper arm?",
+      "expected_answer": "yes",
+      "answer_metadata_key": "answer_normalized",
+      "min_confidence": 0.5,
+      "failure_message": "The cuff was not confirmed on the upper arm."
+    }
+  ]
+}

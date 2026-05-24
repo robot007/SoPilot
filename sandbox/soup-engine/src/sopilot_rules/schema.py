@@ -237,8 +237,31 @@ class AnyOfRule(RuleBase):
         return self
 
 
+class VLMAnswerRule(RuleBase):
+    type: Literal["vlm_answer"]
+    event: str
+    question: str
+    expected_answer: Literal["yes", "no"]
+    answer_metadata_key: str = "answer_normalized"
+
+    @field_validator("question", "answer_metadata_key")
+    @classmethod
+    def text_fields_must_not_be_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("field must not be empty")
+        return value
+
+
 Rule = Annotated[
-    Union[ExistsBeforeRule, NearBeforeRule, OverlapRule, AboveRule, AfterAllRequiredRule, AnyOfRule],
+    Union[
+        ExistsBeforeRule,
+        NearBeforeRule,
+        OverlapRule,
+        AboveRule,
+        AfterAllRequiredRule,
+        AnyOfRule,
+        VLMAnswerRule,
+    ],
     Field(discriminator="type"),
 ]
 

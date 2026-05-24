@@ -28,6 +28,7 @@ Use only these rule types:
 - above
 - after_all_required
 - any_of
+- vlm_answer
 
 Inside any_of conditions, use only:
 - not_exists
@@ -38,6 +39,7 @@ Use only these tags:
 
 Every rule must include id, step_id, type, and type-specific required fields.
 Every any_of rule must include a non-empty conditions array.
+Every vlm_answer rule must include event, question, and expected_answer.
 Do not invent tags.
 Do not invent rule types.
 Do not include markdown.

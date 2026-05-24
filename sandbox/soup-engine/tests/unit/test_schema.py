@@ -23,6 +23,13 @@ class SchemaTests(unittest.TestCase):
         self.assertEqual(package.rules[1].type, "any_of")
         self.assertEqual([condition.type for condition in package.rules[1].conditions], ["not_exists", "overlap"])
 
+    def test_valid_vlm_answer_package_loads(self):
+        data = json.loads((FIXTURE_DIR / "bp_hack_vlm_crosscheck.soup.json").read_text(encoding="utf-8"))
+        package = SoupPackage.model_validate(data)
+        self.assertEqual(package.package.id, "bp_hack_vlm_crosscheck_checker")
+        self.assertEqual(package.rules[-1].type, "vlm_answer")
+        self.assertEqual(package.rules[-1].expected_answer, "yes")
+
     def test_duplicate_rule_id_rejected(self):
         data = self.load_package_data()
         data["rules"][1]["id"] = data["rules"][0]["id"]

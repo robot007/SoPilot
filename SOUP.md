@@ -393,14 +393,17 @@ Many SOP correctness conditions reduce to **relative-position checks** between o
 
 The general pattern is: a small set of bounding-box primitives (center, IoU, vertical/horizontal margin, containment) composed into named rule types (`above`, `overlap`, `near`, `contains`) generates the bulk of the rule library, without any per-SOP custom code.
 
+![Figure 6](doc/img/SOUP-relationships.png)
 
-@TODO SOUP engine can understand these geometry relationship within the `.soup` file, from which many SOP can be valided. For best results, we still need VLM, but its burdern is largely reduced.
+**Fig. 6.** Relationship vocabulary for `.soup` rules. A package author can express object constraints such as `above`, `below`, `left_of`, `right_of`, `inside`, `contains`, `near`, `overlaps`, or `aligned_with` directly in the `.soup` file. These named relationships cover many physical SOP checks: a plug must be inside a port region, a label must be on the correct bottle, a cuff must sit above the elbow, a connector must be near the device socket, or a tool must be placed back in its tray.
 
-'doc/img/SOUP-relationships.png'
+This does not eliminate the need for VLMs. A VLM is still useful for open-ended scene context, unusual hand actions, occlusion explanation, and low-confidence review. The burden changes: instead of asking a VLM to decide the whole SOP, the rule engine asks deterministic geometric questions first and reserves VLM calls for the cases where geometry alone is insufficient.
 
-@TODO SOUP engine can calibrate camera distoursions, such as this perspective. When user write .soup file, they just define the small 'plug' is within the large 'server box' and they don't need to write code to calculate the real coordinates using camera calibration
-'doc/img/SOUP_perspective.png'
+![Figure 7](doc/img/SOUP_perspective.png)
 
+**Fig. 7.** Perspective-aware relationship evaluation. Camera angle and lens distortion can make a simple image-plane rule misleading: a plug may look outside a server bay in raw pixels even though it is physically inside the bay after perspective correction. The SOUP Engine should handle this calibration inside the geometry layer, using reference regions, homography, or camera-calibration metadata when available.
+
+The authoring contract stays simple. In the `.soup` file, the creator writes the semantic rule — for example, "`plug` must be `inside` `server_box`" — rather than writing coordinate-transform code. The engine maps YOLO detections into the calibrated coordinate space, evaluates the relationship, and records both the raw detections and corrected relationship in the evidence trace.
 
 ## 7. Worked Example: BP Monitor End-to-End
 
@@ -553,45 +556,77 @@ The structural win is the **$0 VLM fine-tune** column: by shifting domain learni
 
 ---
 
-## Appendix D — Full YOLO + SOUP Integration Log
+## Appendix D — Full YOLO + SOUP Integration with the SOUP Engine
 
-The trimmed narrative of this run appears in §7 (Worked Example). The unabridged log below is included for reproducibility and audit.
+The trimmed narrative of this run appears in §7 (Worked Example). The unabridged log below is included for reproducibility and audit. 
+
+### Case 1: Correct
+
+@TODO Show `doc/img/yolo-cuff038.03s.png` User follow all the steps and measured blood pressure in the correct process. SOUP engine reached the final state and claimed 'measurement_done occurred after all required steps.'
+
 
 ```text
 SOUP sleeve/cuff video integration
 ===================================
-repo_root=/Users/zhensong/project/SoPilot
-video_path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP_correct.mp4
-model_path=/Users/zhensong/project/SoPilot/images/BP_sc_runs/train/bp_sc_yolo26n.npz
-class_map_path=/Users/zhensong/project/SoPilot/images/BP_sc_dataset/classes.txt
-soup_path=/Users/zhensong/project/SoPilot/sandbox/soup-engine/tests/fixtures/bp/bp_monitor.soup.json
+...
+soup-engine/tests/fixtures/bp/bp_monitor.soup.json
 class_map={0: 'cuff', 1: 'sleeve', 2: 'upper_arm'}
 raw_frame_count=54
-frame frame_id=frame_000.00s timestamp=0.00 retained_detections=0
-detection=id=cuff_001_00 frame=frame_001.00s timestamp=1.00 tag=cuff confidence=0.229 bbox=[236.8,109.2,483.3,260.0] source=yolo_bp_sc
-detection=id=sleeve_001_01 frame=frame_001.00s timestamp=1.00 tag=sleeve confidence=0.219 bbox=[236.8,109.2,483.3,260.0] source=yolo_bp_sc
+frame frame_id=frame_000.00s timestamp=0.00 
 frame frame_id=frame_001.00s timestamp=1.00 retained_detections=2
-detection=id=cuff_002_00 frame=frame_002.00s timestamp=2.00 tag=cuff confidence=0.263 bbox=[170.4,162.4,471.4,255.3] source=yolo_bp_sc
-frame frame_id=frame_002.00s timestamp=2.00 retained_detections=1
-detection=id=cuff_003_00 frame=frame_003.00s timestamp=3.00 tag=cuff confidence=0.700 bbox=[236.5,91.6,453.9,250.1] source=yolo_bp_sc
-frame frame_id=frame_003.00s timestamp=3.00 retained_detections=1
-detection=id=cuff_004_00 frame=frame_004.00s timestamp=4.00 tag=cuff confidence=0.787 bbox=[235.4,66.0,460.1,245.7] source=yolo_bp_sc
-frame frame_id=frame_004.00s timestamp=4.00 retained_detections=1
-detection=id=cuff_005_00 frame=frame_005.00s timestamp=5.00 tag=cuff confidence=0.863 bbox=[236.4,70.5,461.7,239.7] source=yolo_bp_sc
-frame frame_id=frame_005.00s timestamp=5.00 retained_detections=1
 ...
-overlay frame_index=051 timestamp=51.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_051.04s.jpg
-overlay frame_index=052 timestamp=52.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_052.04s.jpg
-overlay frame_index=053 timestamp=53.04 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sc-test-yolo-overlay/frame_053.04s.jpg
-overlay_frame_count=54
-synthetic_detection=id=synthetic_blood_pressure_monitor_000 frame=frame_000.00s timestamp=0.00 tag=blood_pressure_monitor confidence=1.000 bbox=[0.0,0.0,568.0,320.0] source=synthetic_test_proxy
-synthetic_detection=id=synthetic_upper_arm_proxy_frame_053_04s frame=frame_053.04s timestamp=53.04 tag=upper_arm confidence=0.898 bbox=[188.7,54.6,378.2,290.8] source=synthetic_test_proxy
-synthetic_event={'id': 'evt_measure_started_from_video', 'type': 'measure_started', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'fallback_last_sampled_frame_with_upper_arm_proxy'}}
+
 synthetic_event={'id': 'evt_measurement_done_from_video', 'type': 'measurement_done', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'last_sampled_frame'}}
 SOUP state=Start tag=tag=blood_pressure_monitor event=measure_started rule=S0_monitor_visible_before_measure decision=passed confidence=1.0 completed_at=0.0 message=Detected blood_pressure_monitor before measure_started.
 SOUP state=Roll sleeve tag=conditions=not_exists(tag=sleeve);overlap(source_tag=sleeve,target_tag=upper_arm) rule=S1_sleeve_clear_or_on_upper_arm decision=passed confidence=None completed_at=None message=At least one condition passed for S1.
-SOUP state=Put Cuff On Upper Arm tag=source_tag=cuff target_tag=upper_arm rule=S2_cuff_overlaps_upper_arm decision=passed confidence=0.8981239199638367 completed_at=53.03762345679012 message=cuff overlapped upper_arm.
-SOUP state=Measure tag=event=measure_started rule=S3_measure_after_setup decision=passed confidence=None completed_at=53.03762345679012 message=measure_started occurred after all required steps.
-SOUP state=Done tag=event=measurement_done rule=S4_done_after_measure decision=passed confidence=None completed_at=53.03762345679012 message=measurement_done occurred after all required steps.
-FINAL_SOUP_STATUS=passed
+**SOUP state=Put Cuff On Upper Arm **
+tag=source_tag=cuff target_tag=upper_arm rule=S2_cuff_overlaps_upper_arm decision=passed confidence=0.8981239199638367 
+...
+
+**message=measurement_done occurred after all required steps.**
+**FINAL_SOUP_STATUS=passed**
 ```
+
+### Case 2: Did not roll up sleeve
+@TODO Show `doc/img/yolo_cuff_sleeve014.png` User forgot to roll up the sleeve and the SOUP engine believed the process did not finished. SOUP was very confident user need to go back to Step 1 as shown in the follow log
+"need to roll up sleeve, go to 'S1' step"
+"TASK_FINISHED=false"
+
+```
+SOUP sleeve/cuff video integration
+===================================
+repo_root=/Users/zhensong/project/SoPilot
+...
+overlay_frame_count=21
+simple_rule=final_frame_cuff_on_sleeve
+simple_rule_frame=frame_019.01s
+SOUP state=Roll sleeve tag=source_tag=cuff target_tag=sleeve rule=S1_cuff_on_sleeve_quit decision=passed confidence=0.532146155834198 completed_at=19.013768115942028 message=cuff overlapped sleeve.
+FINAL_SOUP_STATUS=quit
+**ERROR=need to roll up sleeve, go to 'S1' step**
+TASK_FINISHED=false
+
+```
+
+### Case 3: Hack to the process
+@TODO Show `doc/img/yolo-hack1.png' User hacked the process and did not put the cuff on arm at all. SOUP engine combined VLM and Yolo data and conclude 'The cuff was not confirmed on the upper arm.' and 'TASK_FINISHED=false' 
+
+This rules for this `.soup` file is here: `bp_hack_vlm_crosscheck.soup.json`
+
+Part of the log file
+```
+VLM_QUESTION=Has the person put any object on upper arm? Answer exactly one token: YES, NO, or UNSURE.
+VLM_ANSWER_RAW=Based on the provided image and the context of the question, the person has placed
+VLM_ANSWER_NORMALIZED=unsure
+vlm_event={'id': 'evt_vlm_cuff_on_upper_arm', 'type': 'vlm_cuff_on_upper_arm_answer', 'timestamp_sec': 16.
+...
+SOUP state=Detect cuff tag=tag=cuff event=vlm_cuff_on_upper_arm_answer rule=S1_cuff_visible_before_vlm decision=passed confidence=0.623184859752655 completed_at=12.008553971486762 message=Detected cuff before vlm_cuff_on_upper_arm_answer.
+SOUP state=Detect sleeve tag=tag=sleeve event=vlm_cuff_on_upper_arm_answer rule=S2_sleeve_visible_before_vlm decision=passed confidence=0.5647324919700623 completed_at=8.005702647657841 message=Detected sleeve before vlm_cuff_on_upper_arm_answer.
+SOUP state=Confirm cuff on upper arm tag=event=vlm_cuff_on_upper_arm_answer **question=Has the person put any object on upper arm?** expected_answer=yes rule=S3_vlm_cuff_on_upper_arm decision=uncertain confidence=0.5 completed_at=16.011405295315683 
+**message=The cuff was not confirmed on the upper arm.**
+FINAL_SOUP_STATUS=needs_review
+TASK_FINISHED=false
+TEST=passed
+
+
+```
+

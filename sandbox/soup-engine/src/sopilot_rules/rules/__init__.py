@@ -10,6 +10,7 @@ from sopilot_rules.schema import (
     NearBeforeRule,
     OverlapRule,
     Rule,
+    VLMAnswerRule,
 )
 
 from .above import evaluate_above
@@ -19,6 +20,7 @@ from .base import EvaluationContext
 from .exists_before import evaluate_exists_before
 from .near_before import evaluate_near_before
 from .overlap import evaluate_overlap
+from .vlm_answer import evaluate_vlm_answer
 
 
 def evaluate_rule(rule: Rule, context: EvaluationContext):
@@ -34,4 +36,6 @@ def evaluate_rule(rule: Rule, context: EvaluationContext):
         return evaluate_after_all_required(rule, context)
     if isinstance(rule, AnyOfRule):
         return evaluate_any_of(rule, context)
+    if isinstance(rule, VLMAnswerRule):
+        return evaluate_vlm_answer(rule, context)
     raise ValueError("unsupported rule type %s" % getattr(rule, "type", "<unknown>"))
