@@ -1,5 +1,5 @@
 # SOUP Package Design
-
+   
 SOUP stands for **Standard Operating Understanding Package**.
 
 A `.soup` package is an executable, portable definition of a physical workflow SOP. It tells SoPilot what to look for in a video, how to convert visual evidence into structured scene events, which local rules to evaluate, and how to produce an explainable result.
