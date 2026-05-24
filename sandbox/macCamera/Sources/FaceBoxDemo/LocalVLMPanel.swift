@@ -416,7 +416,7 @@ private struct VLMChatPanel: View {
     private func sendQuestion() {
         let question = trimmedQuestion
         guard !question.isEmpty, !isWaitingForAnswer else { return }
-        let frames = cameraManager.recentFrameJPEGs(
+        let frames = cameraManager.vlmFrameJPEGs(
             windowSeconds: recentVideoWindowSeconds,
             maxFrames: recentVideoMaxFrames
         )

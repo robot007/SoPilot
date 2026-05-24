@@ -24,7 +24,11 @@ cp "${BUILD_DIR}/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/"
 # Copy Info.plist
 mkdir -p "${APP_BUNDLE}/Contents"
 cp "Resources/Info.plist" "${APP_BUNDLE}/Contents/Info.plist"
-APP_VERSION="$(tr -d '[:space:]' < "Resources/app_version.txt")"
+APP_VERSION="$(sed -nE 's/^[[:space:]]*static let version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "Sources/FaceBoxDemo/AppConfig.swift" | head -n 1)"
+if [ -z "${APP_VERSION}" ]; then
+    echo "Could not read app version from Sources/FaceBoxDemo/AppConfig.swift"
+    exit 1
+fi
 if [ -n "${APP_VERSION}" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" "${APP_BUNDLE}/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${APP_VERSION}" "${APP_BUNDLE}/Contents/Info.plist"

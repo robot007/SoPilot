@@ -24,6 +24,7 @@ class FaceDetector: ObservableObject {
     private let minFrameInterval: TimeInterval = 0.18
     private var isProcessing = false
     private var lastProcessedAt = Date.distantPast
+    private var latestFaces: [DetectedFace] = []
 
     init() {
     }
@@ -53,19 +54,32 @@ class FaceDetector: ObservableObject {
                     ? try self.visionBackend.detect(sampleBuffer: sampleBuffer)
                     : yoloFaces
 
-                DispatchQueue.main.async { [weak self] in
-                    self?.faces = detectedFaces
-                }
+                self.updateFaces(detectedFaces)
             } catch {
                 do {
                     let detectedFaces = try self.visionBackend.detect(sampleBuffer: sampleBuffer)
-                    DispatchQueue.main.async { [weak self] in
-                        self?.faces = detectedFaces
-                    }
+                    self.updateFaces(detectedFaces)
                 } catch {
                     print("Face detection error: \(error)")
                 }
             }
+        }
+    }
+
+    func snapshotFaces() -> [DetectedFace] {
+        stateLock.lock()
+        let snapshot = latestFaces
+        stateLock.unlock()
+        return snapshot
+    }
+
+    private func updateFaces(_ detectedFaces: [DetectedFace]) {
+        stateLock.lock()
+        latestFaces = detectedFaces
+        stateLock.unlock()
+
+        DispatchQueue.main.async { [weak self] in
+            self?.faces = detectedFaces
         }
     }
 }

@@ -35,6 +35,7 @@ struct CameraInfo: Identifiable, Hashable, Sendable {
 private struct RecentVideoFrame {
     let capturedAt: Date
     let jpegData: Data
+    let faces: [DetectedFace]
 }
 
 class CameraManager: NSObject, ObservableObject {
@@ -74,12 +75,37 @@ class CameraManager: NSObject, ObservableObject {
     }
 
     func recentFrameJPEGs(windowSeconds: TimeInterval = 5, maxFrames: Int = 6) -> [Data] {
+        recentFrames(windowSeconds: windowSeconds, maxFrames: maxFrames).map(\.jpegData)
+    }
+
+    func vlmFrameJPEGs(windowSeconds: TimeInterval = 5, maxFrames: Int = 6) -> [Data] {
+        let frames = recentFrames(windowSeconds: windowSeconds, maxFrames: maxFrames)
+        AppLog.write(
+            "[VLM YOLO Overlay] requestedFrames=\(frames.count) "
+                + "overlayEnabled=\(AppConfig.sendYoloOverlayVLM) "
+                + "configuredFontSize=\(AppConfig.yoloFontSize)pt"
+        )
+        guard AppConfig.sendYoloOverlayVLM else {
+            return frames.map(\.jpegData)
+        }
+
+        let fallbackFaces = faceDetector?.snapshotFaces() ?? []
+        return frames.map { frame in
+            let faces = frame.faces.isEmpty ? fallbackFaces : frame.faces
+            guard !faces.isEmpty else {
+                AppLog.write("[VLM YOLO Overlay] skippedFrame=noFaces")
+                return frame.jpegData
+            }
+            return yoloOverlayJPEGData(from: frame.jpegData, faces: faces) ?? frame.jpegData
+        }
+    }
+
+    private func recentFrames(windowSeconds: TimeInterval, maxFrames: Int) -> [RecentVideoFrame] {
         let cutoff = Date().addingTimeInterval(-windowSeconds)
         frameLock.lock()
         let frames = recentVideoFrames
             .filter { $0.capturedAt >= cutoff }
             .suffix(maxFrames)
-            .map(\.jpegData)
         frameLock.unlock()
         return Array(frames)
     }
@@ -309,7 +335,13 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         frameLock.lock()
         latestJPEGData = jpegData
         lastBufferedFrameAt = now
-        recentVideoFrames.append(RecentVideoFrame(capturedAt: now, jpegData: jpegData))
+        recentVideoFrames.append(
+            RecentVideoFrame(
+                capturedAt: now,
+                jpegData: jpegData,
+                faces: faceDetector?.snapshotFaces() ?? []
+            )
+        )
 
         let cutoff = now.addingTimeInterval(-5)
         recentVideoFrames = Array(
@@ -329,5 +361,107 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
             using: .jpeg,
             properties: [.compressionFactor: compressionQuality]
         )
+    }
+
+    private func yoloOverlayJPEGData(from jpegData: Data, faces: [DetectedFace]) -> Data? {
+        guard !faces.isEmpty,
+              let sourceRep = NSBitmapImageRep(data: jpegData) else {
+            return nil
+        }
+
+        let imageSize = NSSize(width: sourceRep.pixelsWide, height: sourceRep.pixelsHigh)
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+
+        let sourceImage = NSImage(size: imageSize)
+        sourceImage.addRepresentation(sourceRep)
+
+        let annotatedImage = NSImage(size: imageSize)
+        annotatedImage.lockFocus()
+        sourceImage.draw(
+            in: NSRect(origin: .zero, size: imageSize),
+            from: NSRect(origin: .zero, size: imageSize),
+            operation: .copy,
+            fraction: 1
+        )
+
+        drawYoloOverlay(faces: faces, imageSize: imageSize)
+        annotatedImage.unlockFocus()
+
+        guard let tiffData = annotatedImage.tiffRepresentation,
+              let annotatedRep = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+        return annotatedRep.representation(using: .jpeg, properties: [.compressionFactor: 0.82])
+    }
+
+    private func drawYoloOverlay(faces: [DetectedFace], imageSize: NSSize) {
+        let minDimension = min(imageSize.width, imageSize.height)
+        let lineWidth = max(4, minDimension / 100)
+        let labelFont = NSFont.boldSystemFont(ofSize: CGFloat(AppConfig.yoloFontSize))
+        let labelPaddingX: CGFloat = 32
+        let labelPaddingY: CGFloat = 20
+
+        for face in faces {
+            let rect = overlayRect(for: face.boundingBox, imageSize: imageSize)
+            guard rect.width > 1, rect.height > 1 else { continue }
+
+            NSColor.systemGreen.setStroke()
+            let path = NSBezierPath(rect: rect)
+            path.lineWidth = lineWidth
+            path.stroke()
+
+            let label = face.confidence > 0 && face.confidence < 1.0
+                ? String(format: "(face, %.2f)", face.confidence)
+                : "(face)"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: labelFont,
+                .foregroundColor: NSColor.white,
+            ]
+            let textSize = label.size(withAttributes: attributes)
+            let labelSize = NSSize(
+                width: textSize.width + labelPaddingX * 2,
+                height: textSize.height + labelPaddingY * 2
+            )
+            let logMessage = "[VLM YOLO Overlay] configuredFontSize=\(AppConfig.yoloFontSize)pt "
+                + "actualPointSize=\(String(format: "%.1f", labelFont.pointSize))pt "
+                + "image=\(Int(imageSize.width))x\(Int(imageSize.height)) "
+                + "label=\(label) "
+                + "textSize=\(Int(textSize.width))x\(Int(textSize.height)) "
+                + "labelBox=\(Int(labelSize.width))x\(Int(labelSize.height))"
+            AppLog.write(logMessage)
+            print(logMessage)
+            let labelX = min(max(rect.minX, 0), max(0, imageSize.width - labelSize.width))
+            var labelY = rect.maxY + lineWidth
+            if labelY + labelSize.height > imageSize.height {
+                labelY = max(rect.minY, rect.maxY - labelSize.height - lineWidth)
+            }
+
+            let labelRect = NSRect(origin: NSPoint(x: labelX, y: labelY), size: labelSize)
+            NSColor.black.withAlphaComponent(0.72).setFill()
+            NSBezierPath(roundedRect: labelRect, xRadius: 5, yRadius: 5).fill()
+
+            label.draw(
+                in: labelRect.insetBy(dx: labelPaddingX, dy: labelPaddingY),
+                withAttributes: attributes
+            )
+        }
+    }
+
+    private func overlayRect(for normalizedBox: CGRect, imageSize: NSSize) -> NSRect {
+        let x1 = clamp(normalizedBox.minX) * imageSize.width
+        let y1 = clamp(normalizedBox.minY) * imageSize.height
+        let x2 = clamp(normalizedBox.maxX) * imageSize.width
+        let y2 = clamp(normalizedBox.maxY) * imageSize.height
+
+        return NSRect(
+            x: min(x1, x2),
+            y: min(y1, y2),
+            width: abs(x2 - x1),
+            height: abs(y2 - y1)
+        )
+    }
+
+    private func clamp(_ value: CGFloat) -> CGFloat {
+        min(1, max(0, value))
     }
 }

@@ -157,8 +157,8 @@ struct ContentView: View {
         }
 
         let confidenceText = face.confidence > 0 && face.confidence < 1.0
-            ? String(format: "face %.2f", face.confidence)
-            : "face"
+            ? String(format: "(face, %.2f)", face.confidence)
+            : "(face)"
 
         return ZStack(alignment: .bottomLeading) {
             Rectangle()
