@@ -1,0 +1,117 @@
+SOUP sleeve/cuff video integration
+===================================
+repo_root=/Users/zhensong/project/SoPilot
+video_path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP_sleeve.mp4
+model_path=/Users/zhensong/project/SoPilot/images/BP_sc_runs/train/bp_sc_yolo26n.npz
+class_map_path=/Users/zhensong/project/SoPilot/images/BP_sc_dataset/classes.txt
+soup_path=/Users/zhensong/project/SoPilot/sandbox/soup-engine/tests/fixtures/bp/bp_cuff_on_sleeve_quit.soup.json
+run_id=BP_sleeve_video
+assert_finished=false
+simple_cuff_on_sleeve_quit=true
+class_map={0: 'cuff', 1: 'sleeve', 2: 'upper_arm'}
+raw_frame_count=21
+detection=id=sleeve_000_00 frame=frame_000.00s timestamp=0.00 tag=sleeve confidence=0.441 bbox=[444.2,0.0,564.0,217.2] source=yolo_bp_sc
+detection=id=sleeve_000_01 frame=frame_000.00s timestamp=0.00 tag=sleeve confidence=0.293 bbox=[114.5,0.0,202.4,213.7] source=yolo_bp_sc
+frame frame_id=frame_000.00s timestamp=0.00 retained_detections=2
+detection=id=sleeve_001_00 frame=frame_001.00s timestamp=1.00 tag=sleeve confidence=0.262 bbox=[143.9,0.0,217.1,157.9] source=yolo_bp_sc
+detection=id=sleeve_001_01 frame=frame_001.00s timestamp=1.00 tag=sleeve confidence=0.174 bbox=[419.6,0.0,507.5,158.9] source=yolo_bp_sc
+detection=id=sleeve_001_02 frame=frame_001.00s timestamp=1.00 tag=sleeve confidence=0.102 bbox=[213.8,1.3,315.7,99.3] source=yolo_bp_sc
+frame frame_id=frame_001.00s timestamp=1.00 retained_detections=3
+detection=id=sleeve_002_00 frame=frame_002.00s timestamp=2.00 tag=sleeve confidence=0.859 bbox=[109.7,4.4,271.8,170.9] source=yolo_bp_sc
+detection=id=sleeve_002_01 frame=frame_002.00s timestamp=2.00 tag=sleeve confidence=0.422 bbox=[400.4,0.0,472.0,148.0] source=yolo_bp_sc
+detection=id=sleeve_002_02 frame=frame_002.00s timestamp=2.00 tag=sleeve confidence=0.141 bbox=[403.7,0.0,475.7,148.5] source=yolo_bp_sc
+frame frame_id=frame_002.00s timestamp=2.00 retained_detections=3
+detection=id=sleeve_003_00 frame=frame_003.00s timestamp=3.00 tag=sleeve confidence=0.770 bbox=[135.8,6.7,339.0,193.6] source=yolo_bp_sc
+detection=id=sleeve_003_01 frame=frame_003.00s timestamp=3.00 tag=sleeve confidence=0.394 bbox=[384.4,0.0,477.2,151.6] source=yolo_bp_sc
+detection=id=sleeve_003_02 frame=frame_003.00s timestamp=3.00 tag=sleeve confidence=0.162 bbox=[394.7,0.0,479.4,150.4] source=yolo_bp_sc
+frame frame_id=frame_003.00s timestamp=3.00 retained_detections=3
+detection=id=sleeve_004_00 frame=frame_004.00s timestamp=4.00 tag=sleeve confidence=0.878 bbox=[116.1,7.9,356.2,134.2] source=yolo_bp_sc
+detection=id=sleeve_004_01 frame=frame_004.00s timestamp=4.00 tag=sleeve confidence=0.488 bbox=[423.2,0.0,488.8,167.0] source=yolo_bp_sc
+detection=id=sleeve_004_02 frame=frame_004.00s timestamp=4.00 tag=sleeve confidence=0.116 bbox=[412.4,0.0,492.5,171.5] source=yolo_bp_sc
+frame frame_id=frame_004.00s timestamp=4.00 retained_detections=3
+detection=id=sleeve_005_00 frame=frame_005.00s timestamp=5.00 tag=sleeve confidence=0.810 bbox=[163.0,0.3,273.7,179.4] source=yolo_bp_sc
+detection=id=sleeve_005_01 frame=frame_005.00s timestamp=5.00 tag=sleeve confidence=0.185 bbox=[416.4,0.0,486.8,155.6] source=yolo_bp_sc
+frame frame_id=frame_005.00s timestamp=5.00 retained_detections=2
+detection=id=sleeve_006_00 frame=frame_006.00s timestamp=6.00 tag=sleeve confidence=0.125 bbox=[255.2,5.1,496.3,110.1] source=yolo_bp_sc
+detection=id=sleeve_006_01 frame=frame_006.00s timestamp=6.00 tag=sleeve confidence=0.108 bbox=[254.0,6.2,510.0,136.3] source=yolo_bp_sc
+frame frame_id=frame_006.00s timestamp=6.00 retained_detections=2
+detection=id=sleeve_007_00 frame=frame_007.01s timestamp=7.01 tag=sleeve confidence=0.619 bbox=[271.5,67.0,502.7,227.4] source=yolo_bp_sc
+detection=id=sleeve_007_01 frame=frame_007.01s timestamp=7.01 tag=sleeve confidence=0.161 bbox=[280.9,238.1,472.6,318.0] source=yolo_bp_sc
+detection=id=cuff_007_02 frame=frame_007.01s timestamp=7.01 tag=cuff confidence=0.160 bbox=[271.5,67.0,502.7,227.4] source=yolo_bp_sc
+frame frame_id=frame_007.01s timestamp=7.01 retained_detections=3
+detection=id=sleeve_008_00 frame=frame_008.01s timestamp=8.01 tag=sleeve confidence=0.484 bbox=[268.8,103.4,568.0,200.1] source=yolo_bp_sc
+detection=id=cuff_008_01 frame=frame_008.01s timestamp=8.01 tag=cuff confidence=0.157 bbox=[224.9,38.4,326.6,192.5] source=yolo_bp_sc
+frame frame_id=frame_008.01s timestamp=8.01 retained_detections=2
+detection=id=cuff_009_00 frame=frame_009.01s timestamp=9.01 tag=cuff confidence=0.641 bbox=[238.4,89.3,381.8,238.5] source=yolo_bp_sc
+detection=id=sleeve_009_01 frame=frame_009.01s timestamp=9.01 tag=sleeve confidence=0.160 bbox=[249.0,240.7,448.7,319.6] source=yolo_bp_sc
+frame frame_id=frame_009.01s timestamp=9.01 retained_detections=2
+detection=id=sleeve_010_00 frame=frame_010.01s timestamp=10.01 tag=sleeve confidence=0.366 bbox=[302.6,157.2,488.5,268.4] source=yolo_bp_sc
+detection=id=sleeve_010_01 frame=frame_010.01s timestamp=10.01 tag=sleeve confidence=0.253 bbox=[228.8,18.1,460.3,114.4] source=yolo_bp_sc
+detection=id=cuff_010_02 frame=frame_010.01s timestamp=10.01 tag=cuff confidence=0.227 bbox=[222.5,106.5,384.5,241.6] source=yolo_bp_sc
+frame frame_id=frame_010.01s timestamp=10.01 retained_detections=3
+detection=id=sleeve_011_00 frame=frame_011.01s timestamp=11.01 tag=sleeve confidence=0.731 bbox=[126.3,95.4,408.7,248.6] source=yolo_bp_sc
+detection=id=sleeve_011_01 frame=frame_011.01s timestamp=11.01 tag=sleeve confidence=0.522 bbox=[130.1,138.7,408.7,251.2] source=yolo_bp_sc
+detection=id=sleeve_011_02 frame=frame_011.01s timestamp=11.01 tag=sleeve confidence=0.435 bbox=[295.1,39.7,486.0,173.6] source=yolo_bp_sc
+frame frame_id=frame_011.01s timestamp=11.01 retained_detections=3
+detection=id=sleeve_012_00 frame=frame_012.01s timestamp=12.01 tag=sleeve confidence=0.485 bbox=[343.6,60.0,510.5,209.0] source=yolo_bp_sc
+detection=id=sleeve_012_01 frame=frame_012.01s timestamp=12.01 tag=sleeve confidence=0.342 bbox=[159.3,12.8,412.9,246.3] source=yolo_bp_sc
+frame frame_id=frame_012.01s timestamp=12.01 retained_detections=2
+detection=id=sleeve_013_00 frame=frame_013.01s timestamp=13.01 tag=sleeve confidence=0.313 bbox=[238.6,28.6,512.4,128.5] source=yolo_bp_sc
+detection=id=sleeve_013_01 frame=frame_013.01s timestamp=13.01 tag=sleeve confidence=0.132 bbox=[302.9,209.8,470.9,314.9] source=yolo_bp_sc
+frame frame_id=frame_013.01s timestamp=13.01 retained_detections=2
+detection=id=sleeve_014_00 frame=frame_014.01s timestamp=14.01 tag=sleeve confidence=0.696 bbox=[143.6,148.4,419.7,286.3] source=yolo_bp_sc
+detection=id=cuff_014_01 frame=frame_014.01s timestamp=14.01 tag=cuff confidence=0.548 bbox=[189.1,78.8,309.2,163.4] source=yolo_bp_sc
+detection=id=cuff_014_02 frame=frame_014.01s timestamp=14.01 tag=cuff confidence=0.313 bbox=[185.8,74.7,318.6,176.0] source=yolo_bp_sc
+frame frame_id=frame_014.01s timestamp=14.01 retained_detections=3
+detection=id=sleeve_015_00 frame=frame_015.01s timestamp=15.01 tag=sleeve confidence=0.827 bbox=[266.6,119.5,493.8,227.1] source=yolo_bp_sc
+detection=id=sleeve_015_01 frame=frame_015.01s timestamp=15.01 tag=sleeve confidence=0.336 bbox=[184.9,218.2,390.6,317.4] source=yolo_bp_sc
+detection=id=cuff_015_02 frame=frame_015.01s timestamp=15.01 tag=cuff confidence=0.225 bbox=[168.7,90.1,293.8,230.3] source=yolo_bp_sc
+frame frame_id=frame_015.01s timestamp=15.01 retained_detections=3
+detection=id=sleeve_016_00 frame=frame_016.01s timestamp=16.01 tag=sleeve confidence=0.703 bbox=[374.5,172.5,550.3,283.6] source=yolo_bp_sc
+detection=id=cuff_016_01 frame=frame_016.01s timestamp=16.01 tag=cuff confidence=0.565 bbox=[228.1,111.0,369.4,239.2] source=yolo_bp_sc
+frame frame_id=frame_016.01s timestamp=16.01 retained_detections=2
+detection=id=cuff_017_00 frame=frame_017.01s timestamp=17.01 tag=cuff confidence=0.420 bbox=[234.5,70.0,376.2,171.1] source=yolo_bp_sc
+detection=id=cuff_017_01 frame=frame_017.01s timestamp=17.01 tag=cuff confidence=0.207 bbox=[228.8,71.2,385.2,175.9] source=yolo_bp_sc
+detection=id=sleeve_017_02 frame=frame_017.01s timestamp=17.01 tag=sleeve confidence=0.161 bbox=[300.0,0.0,459.3,183.9] source=yolo_bp_sc
+frame frame_id=frame_017.01s timestamp=17.01 retained_detections=3
+detection=id=cuff_018_00 frame=frame_018.01s timestamp=18.01 tag=cuff confidence=0.705 bbox=[259.1,77.4,373.9,231.7] source=yolo_bp_sc
+detection=id=sleeve_018_01 frame=frame_018.01s timestamp=18.01 tag=sleeve confidence=0.237 bbox=[435.3,173.0,560.7,279.8] source=yolo_bp_sc
+detection=id=sleeve_018_02 frame=frame_018.01s timestamp=18.01 tag=sleeve confidence=0.131 bbox=[313.6,195.1,435.1,277.6] source=yolo_bp_sc
+frame frame_id=frame_018.01s timestamp=18.01 retained_detections=3
+detection=id=cuff_019_00 frame=frame_019.01s timestamp=19.01 tag=cuff confidence=0.752 bbox=[236.3,63.6,333.7,214.7] source=yolo_bp_sc
+detection=id=sleeve_019_01 frame=frame_019.01s timestamp=19.01 tag=sleeve confidence=0.532 bbox=[234.2,190.6,360.1,317.0] source=yolo_bp_sc
+detection=id=sleeve_019_02 frame=frame_019.01s timestamp=19.01 tag=sleeve confidence=0.241 bbox=[341.0,177.5,448.9,296.6] source=yolo_bp_sc
+detection=id=sleeve_019_03 frame=frame_019.01s timestamp=19.01 tag=sleeve confidence=0.224 bbox=[338.5,178.1,449.6,292.0] source=yolo_bp_sc
+detection=id=sleeve_019_04 frame=frame_019.01s timestamp=19.01 tag=sleeve confidence=0.124 bbox=[226.6,191.3,344.7,312.0] source=yolo_bp_sc
+frame frame_id=frame_019.01s timestamp=19.01 retained_detections=5
+detection=id=cuff_020_00 frame=frame_020.01s timestamp=20.01 tag=cuff confidence=0.842 bbox=[195.2,121.3,364.2,269.9] source=yolo_bp_sc
+frame frame_id=frame_020.01s timestamp=20.01 retained_detections=1
+overlay frame_index=000 timestamp=0.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_000.00s.jpg
+overlay frame_index=001 timestamp=1.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_001.00s.jpg
+overlay frame_index=002 timestamp=2.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_002.00s.jpg
+overlay frame_index=003 timestamp=3.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_003.00s.jpg
+overlay frame_index=004 timestamp=4.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_004.00s.jpg
+overlay frame_index=005 timestamp=5.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_005.00s.jpg
+overlay frame_index=006 timestamp=6.00 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_006.00s.jpg
+overlay frame_index=007 timestamp=7.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_007.01s.jpg
+overlay frame_index=008 timestamp=8.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_008.01s.jpg
+overlay frame_index=009 timestamp=9.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_009.01s.jpg
+overlay frame_index=010 timestamp=10.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_010.01s.jpg
+overlay frame_index=011 timestamp=11.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_011.01s.jpg
+overlay frame_index=012 timestamp=12.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_012.01s.jpg
+overlay frame_index=013 timestamp=13.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_013.01s.jpg
+overlay frame_index=014 timestamp=14.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_014.01s.jpg
+overlay frame_index=015 timestamp=15.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_015.01s.jpg
+overlay frame_index=016 timestamp=16.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_016.01s.jpg
+overlay frame_index=017 timestamp=17.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_017.01s.jpg
+overlay frame_index=018 timestamp=18.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_018.01s.jpg
+overlay frame_index=019 timestamp=19.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_019.01s.jpg
+overlay frame_index=020 timestamp=20.01 path=/Users/zhensong/project/SoPilot/sandbox/BP-video/BP-sleeve-test-yolo-overlay/frame_020.01s.jpg
+overlay_frame_count=21
+simple_rule=final_frame_cuff_on_sleeve
+simple_rule_frame=frame_019.01s
+SOUP state=Roll sleeve tag=source_tag=cuff target_tag=sleeve rule=S1_cuff_on_sleeve_quit decision=passed confidence=0.532146155834198 completed_at=19.013768115942028 message=cuff overlapped sleeve.
+FINAL_SOUP_STATUS=quit
+ERROR=need to roll up sleeve, go to 'S1' step
+TASK_FINISHED=false
+TEST=passed

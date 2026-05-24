@@ -37,14 +37,22 @@ LOG_PATH = Path(
 )
 MODEL_PATH = REPO_ROOT / "images" / "BP_sc_runs" / "train" / "bp_sc_yolo26n.npz"
 CLASS_MAP_PATH = REPO_ROOT / "images" / "BP_sc_dataset" / "classes.txt"
-SOUP_PATH = SOUP_ENGINE_ROOT / "tests" / "fixtures" / "bp" / "bp_monitor.soup.json"
+SOUP_PATH = Path(
+    os.environ.get(
+        "SOUP_PACKAGE_PATH",
+        str(SOUP_ENGINE_ROOT / "tests" / "fixtures" / "bp" / "bp_monitor.soup.json"),
+    )
+)
 FRAME_RATE = 1.0
 EXPECTED_FRAME_COUNT = int(os.environ.get("SOUP_EXPECTED_FRAME_COUNT", "54"))
 YOLO_CONFIDENCE = 0.1
 SOUP_MIN_CONFIDENCE = 0.5
 SETUP_OVERLAP_RATIO = 0.25
+CUFF_ON_SLEEVE_OVERLAP_RATIO = 0.1
 RUN_ID = os.environ.get("SOUP_RUN_ID", "BP_correct_video")
 ASSERT_FINISHED = os.environ.get("SOUP_ASSERT_FINISHED", "1") != "0"
+SIMPLE_CUFF_ON_SLEEVE_QUIT = os.environ.get("SOUP_SIMPLE_CUFF_ON_SLEEVE_QUIT") == "1"
+EXPECTED_TASK_FINISHED = os.environ.get("SOUP_EXPECT_TASK_FINISHED")
 
 
 def _ensure_import_paths() -> None:
@@ -82,6 +90,7 @@ class SOUPSleeveVideoIntegrationTests(unittest.TestCase):
             "soup_path=%s" % SOUP_PATH,
             "run_id=%s" % RUN_ID,
             "assert_finished=%s" % str(ASSERT_FINISHED).lower(),
+            "simple_cuff_on_sleeve_quit=%s" % str(SIMPLE_CUFF_ON_SLEEVE_QUIT).lower(),
         ]
 
         self._assert_required_files()
@@ -125,6 +134,16 @@ class SOUPSleeveVideoIntegrationTests(unittest.TestCase):
         overlay_count = len(sorted(OVERLAY_DIR.glob("*.jpg")))
         _append_line(log_lines, "overlay_frame_count=%d" % overlay_count)
         self.assertEqual(overlay_count, len(frame_records))
+
+        if SIMPLE_CUFF_ON_SLEEVE_QUIT:
+            task_finished = _run_simple_cuff_on_sleeve_quit(
+                detections_by_frame=detections_by_frame,
+                frame_records=frame_records,
+                log_lines=log_lines,
+            )
+            _write_lines(log_lines)
+            _assert_task_expectation(self, task_finished)
+            return
 
         soup_detections = _flatten_detections(
             detections_by_frame,
@@ -208,10 +227,12 @@ class SOUPSleeveVideoIntegrationTests(unittest.TestCase):
         task_finished = result["status"] == "passed"
         _append_line(log_lines, "FINAL_SOUP_STATUS=%s" % result["status"])
         _append_line(log_lines, "TASK_FINISHED=%s" % str(task_finished).lower())
+        _append_test_expectation(log_lines, task_finished)
         _write_lines(log_lines)
 
         self.assertIn("FINAL_SOUP_STATUS=", LOG_PATH.read_text(encoding="utf-8"))
         self.assertIn("TASK_FINISHED=", LOG_PATH.read_text(encoding="utf-8"))
+        _assert_task_expectation(self, task_finished)
         if ASSERT_FINISHED:
             self.assertTrue(
                 task_finished,
@@ -354,6 +375,106 @@ def _run_yolo_on_frames(
         )
 
     return detections_by_frame
+
+
+def _run_simple_cuff_on_sleeve_quit(
+    detections_by_frame: Dict[str, List[Dict]],
+    frame_records: Sequence[Tuple[Path, float]],
+    log_lines: List[str],
+) -> bool:
+    final_frame_id, final_detections = _select_final_cuff_on_sleeve_frame(
+        detections_by_frame=detections_by_frame,
+        frame_records=frame_records,
+    )
+    _append_line(log_lines, "simple_rule=final_frame_cuff_on_sleeve")
+    _append_line(log_lines, "simple_rule_frame=%s" % final_frame_id)
+
+    evaluation = _evaluate_soup(
+        detections=final_detections,
+        events=[],
+        run_id=RUN_ID,
+    )
+    result = evaluation["result"]
+    step_names = evaluation["step_names"]
+    rule_tags = evaluation["rule_tags"]
+    for step in result["steps"]:
+        _append_line(
+            log_lines,
+            (
+                "SOUP state=%s tag=%s rule=%s decision=%s confidence=%s "
+                "completed_at=%s message=%s"
+            )
+            % (
+                step_names.get(step["step_id"], step["step_id"]),
+                rule_tags.get(step["rule_id"], "<none>"),
+                step["rule_id"],
+                step["status"],
+                step.get("confidence"),
+                step.get("completed_at_sec"),
+                step["message"],
+            ),
+        )
+
+    cuff_on_sleeve = result["status"] == "passed"
+    if cuff_on_sleeve:
+        task_finished = False
+        _append_line(log_lines, "FINAL_SOUP_STATUS=quit")
+        _append_line(log_lines, "ERROR=need to roll up sleeve, go to 'S1' step")
+        _append_line(log_lines, "TASK_FINISHED=false")
+    else:
+        task_finished = True
+        _append_line(log_lines, "FINAL_SOUP_STATUS=passed")
+        _append_line(log_lines, "TASK_FINISHED=true")
+
+    _append_test_expectation(log_lines, task_finished)
+    return task_finished
+
+
+def _select_final_cuff_on_sleeve_frame(
+    detections_by_frame: Dict[str, List[Dict]],
+    frame_records: Sequence[Tuple[Path, float]],
+) -> Tuple[str, List[Dict]]:
+    selected_frame_id = frame_records[-1][0].stem
+    selected_detections = _high_confidence_detections(
+        detections_by_frame.get(selected_frame_id, []),
+        tags={"cuff", "sleeve"},
+    )
+
+    for frame_path, _timestamp_sec in reversed(frame_records):
+        frame_detections = _high_confidence_detections(
+            detections_by_frame.get(frame_path.stem, []),
+            tags={"cuff", "sleeve"},
+        )
+        cuffs = [detection for detection in frame_detections if detection["tag"] == "cuff"]
+        sleeves = [detection for detection in frame_detections if detection["tag"] == "sleeve"]
+        for cuff in cuffs:
+            for sleeve in sleeves:
+                if _overlap_ratio(cuff["bbox"], sleeve["bbox"]) >= CUFF_ON_SLEEVE_OVERLAP_RATIO:
+                    return frame_path.stem, frame_detections
+
+    return selected_frame_id, selected_detections
+
+
+def _high_confidence_detections(detections: Iterable[Dict], tags: set[str]) -> List[Dict]:
+    return [
+        detection
+        for detection in detections
+        if detection["tag"] in tags and detection["confidence"] >= SOUP_MIN_CONFIDENCE
+    ]
+
+
+def _append_test_expectation(log_lines: List[str], task_finished: bool) -> None:
+    if EXPECTED_TASK_FINISHED is None:
+        return
+    expected = EXPECTED_TASK_FINISHED == "1"
+    _append_line(log_lines, "TEST=%s" % ("passed" if task_finished == expected else "failed"))
+
+
+def _assert_task_expectation(testcase: unittest.TestCase, task_finished: bool) -> None:
+    if EXPECTED_TASK_FINISHED is None:
+        return
+    expected = EXPECTED_TASK_FINISHED == "1"
+    testcase.assertEqual(task_finished, expected)
 
 
 def _evaluate_soup(detections: Sequence[Dict], events: Sequence[Dict], run_id: str) -> Dict:
