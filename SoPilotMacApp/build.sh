@@ -34,6 +34,9 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources/Python"
 cp -R "${REPO_ROOT}/sandbox/soup-engine/src/sopilot_rules" "${APP_BUNDLE}/Contents/Resources/Python/"
 find "${APP_BUNDLE}/Contents/Resources/Python" -name "__pycache__" -type d -prune -exec rm -rf {} +
 
+mkdir -p "${APP_BUNDLE}/Contents/Resources/AppPages"
+cp "${REPO_ROOT}/doc/appPages/PA2-createBP.png" "${APP_BUNDLE}/Contents/Resources/AppPages/"
+
 PYTHON_FOR_PACKAGING="${SOPILOT_PYTHON:-${REPO_ROOT}/.venv/bin/python}"
 if [ -x "${PYTHON_FOR_PACKAGING}" ]; then
     echo "-> Bundling Python packages..."
