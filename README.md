@@ -1,4 +1,7 @@
 # SoPilot
+Version 1.0
+5/24/2026
+zhensong23931@gmail.com
 
 SoPilot is a **local-first SOP video checker** for physical workflows.
 

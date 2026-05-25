@@ -1,6 +1,10 @@
 # SOUP Engine: A Hybrid Local-Vision Architecture for Affordable Physical-SOP Validation
 
-version 1.3
+version 1.4
+
+5/24/2026
+
+zhensong23931@gmail.com
 
 **Project:** SoPilot — local-first SOP video checker
 **Document type:** Hackathon submission tutorial
@@ -558,12 +562,15 @@ The structural win is the **$0 VLM fine-tune** column: by shifting domain learni
 
 ## Appendix D — Full YOLO + SOUP Integration with the SOUP Engine
 
-The trimmed narrative of this run appears in §7 (Worked Example). The unabridged log below is included for reproducibility and audit. 
+The trimmed narrative of the successful run appears in §7 (Worked Example). This appendix preserves representative audit excerpts for three end-to-end cases: a correct blood-pressure workflow, a sleeve-not-rolled failure, and a process-hack attempt caught by a YOLO + local-VLM cross-check. Full logs are available in `sandbox/BP-video/test_log_SOUP_cuff_correct.log`, `sandbox/BP-video/BP-sleeve-wrong.log`, and `sandbox/BP-video/BP-hack.log`.
 
 ### Case 1: Correct
 
-@TODO Show `doc/img/yolo-cuff038.03s.png` User follow all the steps and measured blood pressure in the correct process. SOUP engine reached the final state and claimed 'measurement_done occurred after all required steps.'
+![Figure D1](doc/img/yolo-cuff038.03s.png)
 
+**Fig. D1.** Correct BP-monitor workflow. The user rolled up the sleeve, placed the cuff on the upper arm, and completed the measurement. YOLO provides the cuff / sleeve / upper-arm evidence, then the SOUP rule engine advances through all required states and accepts the final `measurement_done` event.
+
+The decisive line is `measurement_done occurred after all required steps.` The final status is `passed`, and `TASK_FINISHED=true`.
 
 ```text
 SOUP sleeve/cuff video integration
@@ -579,20 +586,23 @@ frame frame_id=frame_001.00s timestamp=1.00 retained_detections=2
 synthetic_event={'id': 'evt_measurement_done_from_video', 'type': 'measurement_done', 'timestamp_sec': 53.03762345679012, 'confidence': 1.0, 'source': 'synthetic_video_timeline', 'metadata': {'strategy': 'last_sampled_frame'}}
 SOUP state=Start tag=tag=blood_pressure_monitor event=measure_started rule=S0_monitor_visible_before_measure decision=passed confidence=1.0 completed_at=0.0 message=Detected blood_pressure_monitor before measure_started.
 SOUP state=Roll sleeve tag=conditions=not_exists(tag=sleeve);overlap(source_tag=sleeve,target_tag=upper_arm) rule=S1_sleeve_clear_or_on_upper_arm decision=passed confidence=None completed_at=None message=At least one condition passed for S1.
-**SOUP state=Put Cuff On Upper Arm **
-tag=source_tag=cuff target_tag=upper_arm rule=S2_cuff_overlaps_upper_arm decision=passed confidence=0.8981239199638367 
+SOUP state=Put Cuff On Upper Arm tag=source_tag=cuff target_tag=upper_arm rule=S2_cuff_overlaps_upper_arm decision=passed confidence=0.8981239199638367 completed_at=53.03762345679012 message=cuff overlapped upper_arm.
 ...
 
-**message=measurement_done occurred after all required steps.**
-**FINAL_SOUP_STATUS=passed**
+SOUP state=Done tag=event=measurement_done rule=S4_done_after_measure decision=passed confidence=None completed_at=53.03762345679012 message=measurement_done occurred after all required steps.
+FINAL_SOUP_STATUS=passed
+TASK_FINISHED=true
 ```
 
 ### Case 2: Did not roll up sleeve
-@TODO Show `doc/img/yolo_cuff_sleeve014.png` User forgot to roll up the sleeve and the SOUP engine believed the process did not finished. SOUP was very confident user need to go back to Step 1 as shown in the follow log
-"need to roll up sleeve, go to 'S1' step"
-"TASK_FINISHED=false"
 
-```
+![Figure D2](doc/img/yolo_cuff_sleeve014.png)
+
+**Fig. D2.** Sleeve-not-rolled failure. The cuff overlaps the sleeve, so the engine does not allow the workflow to continue as a completed BP measurement. The rule trace tells the user exactly where to recover: return to `S1` and roll up the sleeve.
+
+This case exits with `FINAL_SOUP_STATUS=quit` and `TASK_FINISHED=false` because the process needs correction before measurement should proceed.
+
+```text
 SOUP sleeve/cuff video integration
 ===================================
 repo_root=/Users/zhensong/project/SoPilot
@@ -602,18 +612,20 @@ simple_rule=final_frame_cuff_on_sleeve
 simple_rule_frame=frame_019.01s
 SOUP state=Roll sleeve tag=source_tag=cuff target_tag=sleeve rule=S1_cuff_on_sleeve_quit decision=passed confidence=0.532146155834198 completed_at=19.013768115942028 message=cuff overlapped sleeve.
 FINAL_SOUP_STATUS=quit
-**ERROR=need to roll up sleeve, go to 'S1' step**
+ERROR=need to roll up sleeve, go to 'S1' step
 TASK_FINISHED=false
-
+TEST=passed
 ```
 
 ### Case 3: Hack to the process
-@TODO Show `doc/img/yolo-hack1.png' User hacked the process and did not put the cuff on arm at all. SOUP engine combined VLM and Yolo data and conclude 'The cuff was not confirmed on the upper arm.' and 'TASK_FINISHED=false' 
 
-This rules for this `.soup` file is here: `bp_hack_vlm_crosscheck.soup.json`
+![Figure D3](doc/img/yolo-hack1.png)
 
-Part of the log file
-```
+**Fig. D3.** Process-hack attempt. The user presents cuff-like visual evidence without actually placing the cuff on the upper arm. YOLO still detects relevant objects, but the final local FastVLM cross-check cannot confirm the semantic action. The SOUP engine therefore returns `needs_review` rather than treating the workflow as complete.
+
+The `.soup` package for this case is `sandbox/soup-engine/tests/fixtures/bp/bp_hack_vlm_crosscheck.soup.json`. It adds a VLM-aware rule, `S3_vlm_cuff_on_upper_arm`, after the YOLO visibility checks. The important distinction is that the VLM does not make the final decision; it emits a structured event, and the SOUP rule engine evaluates that event against the expected answer.
+
+```text
 VLM_QUESTION=Has the person put any object on upper arm? Answer exactly one token: YES, NO, or UNSURE.
 VLM_ANSWER_RAW=Based on the provided image and the context of the question, the person has placed
 VLM_ANSWER_NORMALIZED=unsure
@@ -621,12 +633,8 @@ vlm_event={'id': 'evt_vlm_cuff_on_upper_arm', 'type': 'vlm_cuff_on_upper_arm_ans
 ...
 SOUP state=Detect cuff tag=tag=cuff event=vlm_cuff_on_upper_arm_answer rule=S1_cuff_visible_before_vlm decision=passed confidence=0.623184859752655 completed_at=12.008553971486762 message=Detected cuff before vlm_cuff_on_upper_arm_answer.
 SOUP state=Detect sleeve tag=tag=sleeve event=vlm_cuff_on_upper_arm_answer rule=S2_sleeve_visible_before_vlm decision=passed confidence=0.5647324919700623 completed_at=8.005702647657841 message=Detected sleeve before vlm_cuff_on_upper_arm_answer.
-SOUP state=Confirm cuff on upper arm tag=event=vlm_cuff_on_upper_arm_answer **question=Has the person put any object on upper arm?** expected_answer=yes rule=S3_vlm_cuff_on_upper_arm decision=uncertain confidence=0.5 completed_at=16.011405295315683 
-**message=The cuff was not confirmed on the upper arm.**
+SOUP state=Confirm cuff on upper arm tag=event=vlm_cuff_on_upper_arm_answer question=Has the person put any object on upper arm? expected_answer=yes rule=S3_vlm_cuff_on_upper_arm decision=uncertain confidence=0.5 completed_at=16.011405295315683 message=The cuff was not confirmed on the upper arm.
 FINAL_SOUP_STATUS=needs_review
 TASK_FINISHED=false
 TEST=passed
-
-
 ```
-
