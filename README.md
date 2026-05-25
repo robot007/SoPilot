@@ -94,20 +94,6 @@ The naive VLM-first path has poor economics. In [SOUP.md](SOUP.md), the estimate
 
 The cost reduction comes from shifting domain learning away from a large VLM and into a small YOLO detector plus explicit local rules. The privacy benefit comes from keeping raw video, SOP rules, model weights, and final decisions local by default.
 
----
-
-## Inspiration: Physical AI for Smaller Operators
-
-SoPilot is inspired by NVIDIA's physical-AI direction, especially Jensen Huang's GTC Washington, D.C. keynote segment on real-world AI systems:
-
-![Figure 5: Screen capture from GTC 2026 Keynote](doc/img/DeepHowNVDA2026.png)
-
-- [NVIDIA GTC Washington, D.C. Keynote with CEO Jensen Huang, demo around **1:31:04**](https://www.youtube.com/watch?v=lQHK61IDFH4&t=5464s)
-
-
-That direction is personal for this project: **I was one of the four engineers who developed the demo referenced in that keynote segment**. SoPilot asks what it would take to bring the same physical-AI idea down to a practical, privacy-preserving tool that small businesses can actually deploy.
-
----
 
 ## SOUP Recap
 
