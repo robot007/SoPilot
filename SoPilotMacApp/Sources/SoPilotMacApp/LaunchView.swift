@@ -4,12 +4,14 @@ import UniformTypeIdentifiers
 
 private enum AppPage: Equatable {
     case launch
+    case packages
     case pa2
     case pa3
 
     var title: String {
         switch self {
         case .launch: "Launch"
+        case .packages: "Packages"
         case .pa2: "Creator"
         case .pa3: "Upload"
         }
@@ -18,6 +20,7 @@ private enum AppPage: Equatable {
     var subtitle: String {
         switch self {
         case .launch: "Local SOP Video Checker"
+        case .packages: "Choose a SOUP package"
         case .pa2: "Create BP Monitor package"
         case .pa3: "Upload source media"
         }
@@ -26,6 +29,7 @@ private enum AppPage: Equatable {
     var mockupTitle: String {
         switch self {
         case .launch: "Launch"
+        case .packages: "PB2 - SOUP Package Store"
         case .pa2: "PA2 - Create BP Monitor"
         case .pa3: "PA3 - Upload"
         }
@@ -35,6 +39,8 @@ private enum AppPage: Equatable {
         switch self {
         case .launch:
             "Local SOP Video Checker"
+        case .packages:
+            "Choose a verified SOUP package for local SOP validation."
         case .pa2:
             "Any click on this mockup advances to PA3."
         case .pa3:
@@ -45,6 +51,7 @@ private enum AppPage: Equatable {
     var imageFileName: String {
         switch self {
         case .launch: ""
+        case .packages: "PB2-soup-store.png"
         case .pa2: "PA2-createBP.png"
         case .pa3: "PA3-upload.png"
         }
@@ -102,8 +109,8 @@ struct LaunchView: View {
                 SidebarItem(icon: "video.badge.checkmark", title: "Monitor", selected: false) {
                     advancePA2IfNeeded()
                 }
-                SidebarItem(icon: "shippingbox", title: "Packages", selected: false) {
-                    advancePA2IfNeeded()
+                SidebarItem(icon: "shippingbox", title: "Packages", selected: currentPage == .packages) {
+                    navigate(to: .packages)
                 }
                 SidebarItem(icon: "wand.and.stars", title: "Creator", selected: currentPage.isCreatorFlow) {
                     navigate(to: .pa2)
@@ -149,6 +156,8 @@ struct LaunchView: View {
             switch currentPage {
             case .launch:
                 launchWorkspace
+            case .packages:
+                packageStoreWorkspace
             case .pa2:
                 mockupWorkspace(page: .pa2)
             case .pa3:
@@ -181,15 +190,17 @@ struct LaunchView: View {
             Button {
                 if currentPage == .pa2 {
                     currentPage = .pa3
+                } else if currentPage == .packages {
+                    openSoupPackage()
                 } else if currentPage.isCreatorFlow {
                     currentPage = .launch
                 } else {
-                    openSoupPackage()
+                    currentPage = .packages
                 }
             } label: {
                 Label(
-                    currentPage.isCreatorFlow ? "Back to Launch" : "Use Package",
-                    systemImage: currentPage.isCreatorFlow ? "chevron.left" : "shippingbox.fill"
+                    topToolbarActionTitle,
+                    systemImage: topToolbarActionIcon
                 )
             }
             .buttonStyle(.borderedProminent)
@@ -197,6 +208,18 @@ struct LaunchView: View {
         .padding(.horizontal, 20)
         .frame(height: 56)
         .background(.bar)
+    }
+
+    private var topToolbarActionTitle: String {
+        if currentPage.isCreatorFlow { return "Back to Launch" }
+        if currentPage == .packages { return "Use Local File" }
+        return "Choose a SOUP Package"
+    }
+
+    private var topToolbarActionIcon: String {
+        if currentPage.isCreatorFlow { return "chevron.left" }
+        if currentPage == .packages { return "doc.badge.plus" }
+        return "shippingbox.fill"
     }
 
     private var launchWorkspace: some View {
@@ -250,6 +273,109 @@ struct LaunchView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var packageStoreWorkspace: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                HStack(spacing: 10) {
+                    Button {
+                        currentPage = .launch
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("SoPilot")
+                        .font(.system(size: 24, weight: .bold, design: .serif))
+
+                    Spacer()
+
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(Color(red: 0.38, green: 0.50, blue: 0.56))
+                }
+
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Text("Search SOUP packages...")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .frame(maxWidth: 760, minHeight: 44)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+                .padding(.leading, 104)
+
+                HStack(spacing: 10) {
+                    CategoryChip(title: "All Packages", selected: true)
+                    CategoryChip(title: "Healthcare", selected: false)
+                    CategoryChip(title: "HVAC", selected: false)
+                    CategoryChip(title: "Factory", selected: false)
+                    CategoryChip(title: "Safety", selected: false)
+                    CategoryChip(title: "Lab", selected: false)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Featured Packages")
+                        .font(.system(size: 28, weight: .bold, design: .serif))
+                    Text("Verified Standard Operating Procedures for immediate deployment.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(red: 0.36, green: 0.36, blue: 0.36))
+                }
+                .padding(.top, 28)
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 18)],
+                    alignment: .leading,
+                    spacing: 18
+                ) {
+                    PackageStoreCard(
+                        title: "Blood Pressure Monitor SOP Checker",
+                        description: "Automated visual verification for clinical blood pressure measurement protocols. Ensures cuff placement and patient posture compliance.",
+                        badge: "Verified",
+                        price: "FREE",
+                        meta: "All Local",
+                        installs: "2.4k installs",
+                        artwork: .photo("cuff-ipad-table.png"),
+                        actionIcon: "plus"
+                    )
+
+                    PackageStoreCard(
+                        title: "HVAC Filter Maintenance SOP",
+                        description: "Step-by-step vision guidance for industrial air handling units. Includes particle sensor calibration and seal integrity checks.",
+                        badge: "Enterprise",
+                        price: "$49.00",
+                        meta: "Cloud Hybrid",
+                        installs: "1.1k installs",
+                        artwork: .industrial,
+                        actionIcon: "cart"
+                    )
+
+                    PackageStoreCard(
+                        title: "Lab Pipette Sterilization Routine",
+                        description: "Vision-based audit for GLP-compliant sterilization. Tracks contact time, temperature readings, and equipment positioning.",
+                        badge: "Advanced",
+                        price: "FREE",
+                        meta: "All Local",
+                        installs: "840 installs",
+                        artwork: .lab,
+                        actionIcon: "plus"
+                    )
+                }
+
+                PackagePromoBanner()
+                    .padding(.top, 38)
+            }
+            .padding(24)
+            .frame(maxWidth: 1120, alignment: .leading)
+        }
+        .background(Color(red: 0.99, green: 0.97, blue: 0.985))
     }
 
     private var pa3UploadWorkspace: some View {
@@ -510,9 +636,9 @@ struct LaunchView: View {
     private var actionButtons: some View {
         HStack(spacing: 10) {
             Button {
-                openSoupPackage()
+                currentPage = .packages
             } label: {
-                Label("Use a SOUP Package", systemImage: "shippingbox.fill")
+                Label("Choose a SOUP Package", systemImage: "shippingbox.fill")
             }
             .buttonStyle(PrimaryLaunchButtonStyle())
 
@@ -792,14 +918,285 @@ private struct MockupImageView: View {
     }
 
     private func findImage(named name: String) -> NSImage? {
+        ProjectImageLoader.image(named: name, in: "AppPages")
+    }
+}
+
+private enum PackageArtworkKind {
+    case photo(String)
+    case industrial
+    case lab
+}
+
+private struct CategoryChip: View {
+    let title: String
+    let selected: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: selected ? .semibold : .regular))
+            .foregroundStyle(selected ? .white : Color(red: 0.42, green: 0.42, blue: 0.44))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(selected ? Color(red: 0.0, green: 0.31, blue: 0.62) : Color(red: 0.92, green: 0.91, blue: 0.925))
+            .clipShape(Capsule())
+    }
+}
+
+private struct PackageStoreCard: View {
+    let title: String
+    let description: String
+    let badge: String
+    let price: String
+    let meta: String
+    let installs: String
+    let artwork: PackageArtworkKind
+    let actionIcon: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                PackageArtwork(kind: artwork)
+
+                Label(badge, systemImage: badge == "Advanced" ? "flask" : "checkmark.seal")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color(red: 0.0, green: 0.31, blue: 0.62))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.white.opacity(0.88))
+                    .clipShape(Capsule())
+                    .padding(10)
+            }
+            .frame(height: 150)
+            .clipped()
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .bold, design: .serif))
+                        .foregroundStyle(Color(red: 0.08, green: 0.08, blue: 0.09))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 6)
+
+                    Text(price)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Color(red: 0.0, green: 0.31, blue: 0.62))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color(red: 0.93, green: 0.93, blue: 0.94))
+                        .clipShape(Capsule())
+                }
+
+                Text(description)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(red: 0.34, green: 0.34, blue: 0.36))
+                    .lineSpacing(2)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 8)
+
+                Divider()
+
+                HStack(spacing: 10) {
+                    Image(systemName: meta == "All Local" ? "globe" : "cloud")
+                    Text(meta)
+                    Image(systemName: "arrow.down.to.line.compact")
+                    Text(installs)
+                    Spacer()
+
+                    Button {} label: {
+                        Image(systemName: actionIcon)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color(red: 0.0, green: 0.31, blue: 0.62))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .font(.system(size: 10))
+                .foregroundStyle(Color(red: 0.46, green: 0.46, blue: 0.48))
+            }
+            .padding(18)
+            .frame(minHeight: 188, alignment: .topLeading)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
+private struct PackageArtwork: View {
+    let kind: PackageArtworkKind
+
+    var body: some View {
+        switch kind {
+        case .photo(let name):
+            if let image = ProjectImageLoader.image(named: name, in: "img") {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .overlay(.black.opacity(0.14))
+            } else {
+                industrialFallback
+            }
+        case .industrial:
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.08, green: 0.17, blue: 0.19),
+                        Color(red: 0.22, green: 0.31, blue: 0.32)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                IndustrialGrid()
+                    .opacity(0.35)
+                Image(systemName: "fanblades.fill")
+                    .font(.system(size: 46, weight: .light))
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+        case .lab:
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.0, green: 0.13, blue: 0.16),
+                        Color(red: 0.0, green: 0.45, blue: 0.55)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                LabGlasswareDrawing()
+                    .padding(14)
+            }
+        }
+    }
+
+    private var industrialFallback: some View {
+        ZStack {
+            Color(red: 0.10, green: 0.16, blue: 0.18)
+            IndustrialGrid()
+                .opacity(0.35)
+        }
+    }
+}
+
+private struct LabGlasswareDrawing: View {
+    var body: some View {
+        GeometryReader { geometry in
+            Canvas { context, size in
+                let cyan = Color.cyan.opacity(0.78)
+                let dim = Color.cyan.opacity(0.28)
+
+                var bench = Path()
+                bench.move(to: CGPoint(x: 0, y: size.height * 0.78))
+                bench.addLine(to: CGPoint(x: size.width, y: size.height * 0.78))
+                context.stroke(bench, with: .color(dim), lineWidth: 2)
+
+                for index in 0..<5 {
+                    let x = size.width * (0.18 + CGFloat(index) * 0.16)
+                    let tube = CGRect(x: x, y: size.height * 0.28, width: size.width * 0.06, height: size.height * 0.48)
+                    context.stroke(Path(roundedRect: tube, cornerRadius: 7), with: .color(cyan), lineWidth: 2)
+
+                    var liquid = Path()
+                    liquid.move(to: CGPoint(x: tube.minX + 3, y: tube.maxY - 20 - CGFloat(index % 3) * 7))
+                    liquid.addLine(to: CGPoint(x: tube.maxX - 3, y: tube.maxY - 20 - CGFloat(index % 3) * 7))
+                    context.stroke(liquid, with: .color(cyan), lineWidth: 2)
+                }
+
+                let flask = CGRect(x: size.width * 0.60, y: size.height * 0.20, width: size.width * 0.22, height: size.height * 0.50)
+                context.stroke(Path(roundedRect: flask, cornerRadius: 8), with: .color(cyan), lineWidth: 2)
+
+                var neck = Path()
+                neck.move(to: CGPoint(x: flask.midX, y: size.height * 0.08))
+                neck.addLine(to: CGPoint(x: flask.midX, y: flask.minY))
+                context.stroke(neck, with: .color(cyan), lineWidth: 2)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+    }
+}
+
+private struct PackagePromoBanner: View {
+    var body: some View {
+        HStack(spacing: 26) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("NEW ARRIVAL")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color(red: 0.0, green: 0.62, blue: 1.0))
+
+                Text("Complete PPE detection and exclusionary zone monitoring updated for YOLOx models.")
+                    .font(.system(size: 19, weight: .regular, design: .serif))
+                    .foregroundStyle(.white.opacity(0.90))
+                    .lineSpacing(4)
+                    .frame(maxWidth: 360, alignment: .leading)
+
+                Button("Explore Package") {}
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 11)
+                    .background(.white)
+                    .clipShape(Capsule())
+                    .buttonStyle(.plain)
+            }
+
+            Spacer(minLength: 20)
+
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.07, green: 0.18, blue: 0.19),
+                        Color(red: 0.18, green: 0.27, blue: 0.25)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                IndustrialGrid()
+                    .opacity(0.20)
+
+                Image(systemName: "figure.stand")
+                    .font(.system(size: 90, weight: .light))
+                    .foregroundStyle(Color.yellow.opacity(0.85))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Label("LIVE ANALYSIS", systemImage: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(Color(red: 0.0, green: 0.31, blue: 0.62).opacity(0.90))
+                    .clipShape(Capsule())
+                    .padding(16)
+            }
+            .frame(width: 430, height: 220)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding(30)
+        .frame(maxWidth: .infinity, minHeight: 260, alignment: .leading)
+        .background(.black)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private enum ProjectImageLoader {
+    static func image(named name: String, in folder: String) -> NSImage? {
         let fileManager = FileManager.default
         let root = PythonRuntimeLocator.projectRoot()
         let cwd = URL(fileURLWithPath: fileManager.currentDirectoryPath)
         let candidates = [
-            Bundle.main.resourceURL?.appendingPathComponent("AppPages/\(name)"),
-            root.appendingPathComponent("doc/appPages/\(name)"),
-            cwd.appendingPathComponent("doc/appPages/\(name)").standardizedFileURL,
-            cwd.appendingPathComponent("../doc/appPages/\(name)").standardizedFileURL,
+            Bundle.main.resourceURL?.appendingPathComponent("\(folder)/\(name)"),
+            Bundle.main.resourceURL?.appendingPathComponent(folder == "AppPages" ? "AppPages/\(name)" : "img/\(name)"),
+            root.appendingPathComponent("doc/\(folder)/\(name)"),
+            cwd.appendingPathComponent("doc/\(folder)/\(name)").standardizedFileURL,
+            cwd.appendingPathComponent("../doc/\(folder)/\(name)").standardizedFileURL,
         ].compactMap { $0 }
 
         return candidates

@@ -1,8 +1,8 @@
 # SOUP Engine: A Hybrid Local-Vision Architecture for Affordable Physical-SOP Validation
 
-<img src="doc/img/soup-logo.png" alt="SOUP logo" width="80">
+<img src="doc/img/soup-logo.png" alt="SOUP logo" width="150">
 
-version 1.4
+version 1.5
 
 5/24/2026
 

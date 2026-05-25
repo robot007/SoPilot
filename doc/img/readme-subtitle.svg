@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="54" viewBox="0 0 900 54" role="img" aria-label="Private SOP video checking without VLM fine-tuning bills">
+  <defs>
+    <linearGradient id="subtitleGradient" x1="0" y1="0" x2="900" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff0055"/>
+      <stop offset="0.25" stop-color="#ff9900"/>
+      <stop offset="0.5" stop-color="#00e5ff"/>
+      <stop offset="0.75" stop-color="#9900ff"/>
+      <stop offset="1" stop-color="#00ff88"/>
+    </linearGradient>
+  </defs>
+  <text x="0" y="38" fill="url(#subtitleGradient)" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="30" font-weight="800">Private SOP video checking without VLM fine-tuning bills</text>
+</svg>

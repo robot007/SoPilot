@@ -1,22 +1,30 @@
 # SoPilot
-## Private SOP video checking without VLM fine-tuning bills
+![Private SOP video checking without VLM fine-tuning bills](doc/img/readme-subtitle.svg)
 
-<img src="doc/img/soup-logo.png" alt="SOUP logo" width="80">
+<img src="doc/img/soup-logo.png" alt="SOUP logo" width="150">
 
-version 1.4
+version 1.6
 
 5/24/2026
 
+SOP stands for Standard Operating Procedure, a step-by-step protocol that ensures consistency and quality across physical and regulated workflows. The global SOP management market is around $5.5B in 2026, projected to reach $9.3B by 2033 [1,2]. SOPs are the backbone of repeatable work in healthcare, labs, manufacturing, field service, and safety programs. When followed correctly, they reduce rework, training costs, audit risk, and human error. When skipped or inconsistently checked, the fallout includes failed inspections, customer claims, product defects, and safety incidents. A practical validation tool therefore has direct market value: it turns everyday workflow video into measurable compliance evidence without enterprise-scale AI budgets.
+
+SoPilot is a local-first SOP video checker for physical workflows. It is inspired by GB300 manufacturing process in NVIDIA 2026 keynote speech on GTC Washington, D.C. 
+That direction is personal for this project: **I was one of the three engineers who developed the demo referenced in that keynote segment**.
+Continue along the line, I further propose a novel SOUP rule engine quickly combine YOLO [3] and Apple FastVLM [4], a Vision Language Model (VLM), to decide whether each SOP step passed, failed, or needs review.
 
 
-SoPilot is a local-first SOP video checker for physical workflows. It uses YOLO26 MLX on Apple Silicon to detect workflow evidence, then a deterministic SOUP rule engine decides whether each SOP step passed, failed, or needs review.
+![Figure 5: Screen capture from GTC 2026 Keynote](doc/img/DeepHowNVDA2026.png)
 
-The target users are small clinics, labs, factories, field-service teams, trainers, and operators who have two practical problems with today’s “ask a VLM about the video” approach:
+- [NVIDIA GTC Washington, D.C. Keynote with CEO Jensen Huang, demo around **1:31:04**](https://www.youtube.com/watch?v=lQHK61IDFH4&t=5464s)
 
-- It is too expensive to fine-tune or operate large VLMs for every long-tail SOP object.
-- Raw workflow video often contains private medical, workplace, customer, or facility data that should not leave the device by default.
 
-SoPilot’s answer is simple: keep the video and final decision local, train a small detector for domain objects, and use VLMs only as optional advisory help for ambiguous cases.
+The target users—small clinics, labs, factories, field-service teams, trainers, and operators—face two practical problems with today's "ask a VLM about the video" approach:
+
+- Fine-tuning and running large VLMs for every long-tail SOP object is prohibitively expensive.
+- Raw workflow video contains private medical, workplace, customer, or facility data that should stay on-device by default.
+
+SoPilot's answer is simple: keep the video and final decision local, train a small detector for domain objects, and use VLMs only as optional advisory help for ambiguous cases.
 
 **Slogan:** Affordable SOP validation. Private by default. Auditable step by step.
 
@@ -90,7 +98,7 @@ The cost reduction comes from shifting domain learning away from a large VLM and
 
 ## Inspiration: Physical AI for Smaller Operators
 
-SoPilot is inspired by NVIDIA’s physical-AI direction, especially Jensen Huang’s GTC Washington, D.C. keynote segment on real-world AI systems:
+SoPilot is inspired by NVIDIA's physical-AI direction, especially Jensen Huang's GTC Washington, D.C. keynote segment on real-world AI systems:
 
 ![Figure 5: Screen capture from GTC 2026 Keynote](doc/img/DeepHowNVDA2026.png)
 
@@ -108,13 +116,13 @@ SOUP means **Standard Operating Understanding Package**. A SOUP package is the i
 Key points from [SOUP.md](SOUP.md):
 
 - **VLMs are not enough.** General VLMs can miss long-tail domain objects such as a blood-pressure cuff, HVAC connector, shop-floor jig, or specialized tool.
-- **Fine-tuning VLMs is often the wrong first move.** The project’s estimate puts VLM fine-tuning out of reach for many 10-SOP deployments.
+- **Fine-tuning VLMs is often the wrong first move.** The project's estimate puts VLM fine-tuning out of reach for many 10-SOP deployments.
 - **YOLO handles domain grounding.** A small YOLO detector learns the site-specific objects and runs locally.
 - **Rules handle correctness.** The SOUP engine evaluates geometry, sequence, timing, confidence, and required-step rules.
 - **VLMs remain useful, but advisory.** A local or guarded cloud VLM can help with ambiguous scene understanding, but it never owns the final decision.
 - **The result is auditable.** Each decision maps back to a step, rule, evidence frame, confidence, and privacy log.
 
-SOUP is not trying to make every user “ship SOP as code.” The user-facing product is simpler: install or create a package, run the workflow, and get a private, explainable result.
+SOUP is not trying to make every user "ship SOP as code." The user-facing product is simpler: install or create a package, run the workflow, and get a private, explainable result.
 
 ---
 
@@ -300,7 +308,7 @@ This matters because SOP videos can show patients, homes, employees, facilities,
 
 | Generic VLM SOP checker | SoPilot |
 |---|---|
-| Sends video to a model and asks “did this pass?” | Runs local detection and local rules first |
+| Sends video to a model and asks "did this pass?" | Runs local detection and local rules first |
 | Expensive to adapt to domain objects | Trains a small YOLO detector for those objects |
 | Hard to audit | Returns step-level decisions and evidence |
 | Privacy depends on cloud policy | Private by default |
@@ -334,14 +342,20 @@ This is a hackathon MVP, not a medical device or regulated compliance product.
 ## Submission Links
 
 - GitHub repo: https://github.com/robot007/SoPilot
-- 1-minute demo video: TODO
+- 1-minute demo video: https://youtu.be/OCmniMj3spg
 - Social post: TODO
 
-**SoPilot makes SOP video checking affordable, private, and auditable.**
+![SoPilot makes SOP video checking affordable, private, and auditable.](doc/img/readme-slogan.svg)
 
+![](doc/img/readme-spacer-10cm.svg)
 
 
 Dr. Zhen Song
 zhensong23931@gmail.com
 
 5/24/2026
+
+[1] SOP Management Solution Market, Persistence Market Research: https://www.persistencemarketresearch.com/market-research/sop-management-solutions-market.asp
+[2] SOP Management Solution Market, Precedence Research: https://www.precedenceresearch.com/sop-management-solution-market
+[3] Redmon, J., Divvala, S., Girshick, R., & Farhadi, A. (2016). You Only Look Once: Unified, Real-Time Object Detection. CVPR 2016. https://arxiv.org/abs/1506.02640
+[4] Vasu, P. K. A., Faghri, F., Li, C. L., Koc, C., True, N., Antony, A., Santhanam, G., Gabriel, J., Grasch, P., Tuzel, O., & Pouransari, H. (2025). FastVLM: Efficient Vision Encoding for Vision Language Models. CVPR 2025. https://arxiv.org/abs/2412.13303
