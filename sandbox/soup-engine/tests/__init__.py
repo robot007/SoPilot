@@ -1,0 +1,1 @@
+"""sopilot-rules tests."""

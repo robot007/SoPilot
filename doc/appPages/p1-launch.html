@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SoPilot - Role Selection</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            font-family: 'Open Sans', sans-serif;
+            min-height: max(884px, 100dvh);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .frosted-glass {
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+        }
+        .apple-shadow {
+            box-shadow: rgba(0, 0, 0, 0.08) 0px 4px 12px;
+        }
+        /* Custom Letter Spacing for Headlines */
+        .headline-tight {
+            letter-spacing: -0.02em;
+        }
+
+        /* Apple-tight Motion & Micro-interactions */
+        @media (prefers-reduced-motion: no-preference) {
+            .animate-slide-up {
+                opacity: 0;
+                transform: translateY(24px);
+                animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+            .delay-100 { animation-delay: 100ms; }
+            .delay-200 { animation-delay: 200ms; }
+            .delay-300 { animation-delay: 300ms; }
+            .delay-400 { animation-delay: 400ms; }
+
+            @keyframes slideUp {
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .btn-press {
+                transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s, opacity 0.2s;
+            }
+            .btn-press:active {
+                transform: scale(0.98) !important;
+            }
+
+            .animate-breathe {
+                animation: breathe 4s ease-in-out infinite;
+            }
+            @keyframes breathe {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.02); }
+            }
+            /* Reset transform for breathe so scale combines nicely or separate wrapper is used.
+               For simplicity, applying breathe will override active scale unless we are careful. 
+               We will apply breathe to an inner element or just accept standard hover overrides. */
+            
+            .btn-breathe-wrapper {
+                display: inline-block;
+                animation: breathe 4s ease-in-out infinite;
+                width: 100%;
+            }
+            @media (min-width: 640px) {
+                .btn-breathe-wrapper { width: auto; }
+            }
+
+            .privacy-icon-reveal {
+                opacity: 0;
+                transform: scale(0.5);
+                transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .privacy-icon-reveal.is-visible {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            .animate-scan {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: linear-gradient(to right, transparent, rgba(41, 151, 255, 0.8), transparent);
+                box-shadow: 0 0 12px rgba(41, 151, 255, 0.6);
+                animation: scanLine 3.5s linear infinite;
+                z-index: 10;
+                pointer-events: none;
+            }
+            @keyframes scanLine {
+                0% { top: 0%; opacity: 0; }
+                10% { opacity: 1; }
+                90% { opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+            }
+
+            .animate-dot-pulse {
+                animation: dotPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            @keyframes dotPulse {
+                0%, 100% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.4; transform: scale(0.8); }
+            }
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface": "#fcf8fb",
+                        "on-primary": "#ffffff",
+                        "on-secondary-fixed": "#1a1c1d",
+                        "surface-pearl": "#fafafc",
+                        "surface-video-frame": "#252527",
+                        "canvas-black": "#000000",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed": "#d7e3ff",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#414753",
+                        "inverse-surface": "#303032",
+                        "primary-fixed-dim": "#aac7ff",
+                        "outline-variant": "#c1c6d5",
+                        "surface-bright": "#fcf8fb",
+                        "secondary": "#5d5e60",
+                        "on-background": "#1b1b1d",
+                        "secondary-fixed": "#e2e2e4",
+                        "surface-tile-dark-alt": "#2a2a2c",
+                        "error-container": "#ffdad6",
+                        "surface-container-high": "#eae7ea",
+                        "action-blue-dark": "#2997ff",
+                        "secondary-fixed-dim": "#c6c6c8",
+                        "secondary-container": "#dfdfe1",
+                        "on-surface": "#1b1b1d",
+                        "on-tertiary-container": "#ebe8ea",
+                        "tertiary-fixed": "#e4e2e4",
+                        "background": "#fcf8fb",
+                        "surface-container-highest": "#e4e2e4",
+                        "surface-dim": "#dcd9dc",
+                        "on-tertiary-fixed-variant": "#474649",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-fixed": "#1b1b1d",
+                        "action-blue-focus": "#0071e3",
+                        "inverse-on-surface": "#f3f0f2",
+                        "on-primary-fixed": "#001b3e",
+                        "hairline": "#e0e0e0",
+                        "inverse-primary": "#aac7ff",
+                        "primary": "#004e9f",
+                        "tertiary": "#515052",
+                        "error": "#ba1a1a",
+                        "tertiary-container": "#69686a",
+                        "surface-variant": "#e4e2e4",
+                        "surface-container-low": "#f6f3f5",
+                        "primary-container": "#0066cc",
+                        "surface-tint": "#005cba",
+                        "on-secondary": "#ffffff",
+                        "on-primary-container": "#dfe8ff",
+                        "ink-muted": "#7a7a7a",
+                        "tertiary-fixed-dim": "#c8c6c8",
+                        "on-secondary-fixed-variant": "#454749",
+                        "outline": "#727784",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container": "#f0edef",
+                        "on-secondary-container": "#616365",
+                        "on-primary-fixed-variant": "#00458e"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "8px",
+                        "xxl": "48px",
+                        "xl": "32px",
+                        "sm": "12px",
+                        "lg": "24px",
+                        "section-desktop": "80px",
+                        "md": "17px",
+                        "xxs": "4px"
+                    },
+                    "fontFamily": {
+                        "lead": ["Open Sans"],
+                        "button-large": ["Open Sans"],
+                        "display-lg": ["Open Sans"],
+                        "caption": ["Open Sans"],
+                        "hero-display": ["Open Sans"],
+                        "body": ["Open Sans"],
+                        "hero-display-mobile": ["Open Sans"],
+                        "nav-link": ["Open Sans"],
+                        "display-md": ["Open Sans"]
+                    },
+                    "fontSize": {
+                        "lead": ["28px", {"lineHeight": "1.14", "letterSpacing": "0.196px", "fontWeight": "400"}],
+                        "button-large": ["18px", {"lineHeight": "1.0", "letterSpacing": "0px", "fontWeight": "400"}],
+                        "display-lg": ["40px", {"lineHeight": "1.10", "letterSpacing": "0px", "fontWeight": "700"}],
+                        "caption": ["14px", {"lineHeight": "1.5", "letterSpacing": "0px", "fontWeight": "400"}],
+                        "hero-display": ["56px", {"lineHeight": "1.07", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body": ["17px", {"lineHeight": "1.5", "letterSpacing": "0px", "fontWeight": "400"}],
+                        "hero-display-mobile": ["28px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "nav-link": ["12px", {"lineHeight": "1.0", "letterSpacing": "0px", "fontWeight": "400"}],
+                        "display-md": ["34px", {"lineHeight": "1.47", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed min-h-screen flex flex-col">
+<!-- Top Navigation Anchor -->
+<header class="docked full-width top-0 z-50 flex justify-between items-center px-lg h-16 w-full backdrop-blur-xl bg-surface/80 animate-slide-up">
+<div class="font-display-md text-display-md font-bold headline-tight text-on-background">SoPilot</div>
+<div class="flex items-center gap-sm">
+<span class="font-nav-link text-nav-link text-on-surface-variant">v1.0.4 Local Edition</span>
+</div>
+</header>
+<main class="flex-grow flex flex-col items-center justify-center px-lg pt-section-desktop pb-section-desktop max-w-[1440px] mx-auto w-full">
+<!-- Hero Section -->
+<section class="text-center max-w-[980px] mb-xxl">
+<div class="animate-slide-up delay-100">
+<h1 class="font-hero-display text-hero-display headline-tight text-on-background mb-sm">
+                SoPilot
+            </h1>
+<p class="font-lead text-lead text-on-surface-variant mb-xl">
+                Local SOP Video Checker
+            </p>
+</div>
+<!-- Definitions Container -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-lg mb-xxl animate-slide-up delay-200">
+<div class="p-lg rounded-xl border border-hairline bg-surface-pearl text-left apple-shadow">
+<h3 class="font-bold text-primary mb-xs headline-tight" style="font-size: 20px;">SOP</h3>
+<p class="font-caption text-caption text-on-surface-variant">Standard Operating Procedure: A set of step-by-step instructions compiled by an organization to help workers carry out complex routine operations.</p>
+</div>
+<div class="p-lg rounded-xl border border-hairline bg-surface-pearl text-left apple-shadow">
+<h3 class="font-bold text-primary mb-xs headline-tight" style="font-size: 20px;">SOUP</h3>
+<p class="font-caption text-caption text-on-surface-variant">SOP Unified Package: A portable local-first file format that bundles YOLO models, rule-sets, and verification logic into a single executable container.</p>
+</div>
+</div>
+<!-- Primary Actions -->
+<div class="flex flex-col sm:flex-row items-center justify-center gap-lg mb-xxl animate-slide-up delay-300">
+<div class="btn-breathe-wrapper">
+<button class="w-full px-xl py-md bg-primary text-on-primary rounded-full font-button-large text-button-large btn-press hover:opacity-90 shadow-md">
+                    Use a SOUP Package
+                </button>
+</div>
+<button class="w-full sm:w-auto px-xl py-md bg-surface-pearl text-primary border border-hairline rounded-full font-button-large text-button-large btn-press hover:bg-surface-container-low apple-shadow">
+                    Create a SOUP Package
+                </button>
+</div>
+<!-- Privacy Feature List -->
+<div class="bg-surface-container-low rounded-xl p-lg border border-hairline inline-block mx-auto animate-slide-up delay-400">
+<div class="flex flex-wrap justify-center gap-xl privacy-container">
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary text-[20px] privacy-icon-reveal" data-icon="lock">lock</span>
+<span class="font-caption text-caption font-bold">SOP rules stay local</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary text-[20px] privacy-icon-reveal" data-icon="memory">memory</span>
+<span class="font-caption text-caption font-bold">YOLO model stays local</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary text-[20px] privacy-icon-reveal" data-icon="video_file">video_file</span>
+<span class="font-caption text-caption font-bold">Raw video stays local</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary text-[20px] privacy-icon-reveal" data-icon="verified_user">verified_user</span>
+<span class="font-caption text-caption font-bold">Final decision is local</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Visual Anchor -->
+<section class="w-full max-w-[1200px] overflow-hidden rounded-xl bg-surface-video-frame relative aspect-video apple-shadow animate-slide-up delay-400">
+<img class="w-full h-full object-cover opacity-60 grayscale hover:grayscale-0 transition-all duration-700" data-alt="A high-tech industrial workstation setup with a clean, minimalist aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAUNZ9fjBZbR8zcpuCSBYiojgy8HymObPxvEpBbON3jgWyIqNJl3NeL89yqcYqWLokStIkwjnpFSb9pRLc-FHJcvlv_3smuZXMmXaxzg2i1qk4EsWIcWPgpKSo3ri6J04BkDkr7z-56H6A7p5izhZwaPjdAmCjLEDDppmxLoUGOVwMMYfu-x4gmrmhvgr4TKFTaQvEEOeYSUKv2KsiPKwmgonZ9NhhW9U3nGfzDjhdRJKvY1_4_v2mC4onBRmpFWYoL_QECmGn4Uw4O"/>
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<div class="p-xl frosted-glass bg-white/10 rounded-full border border-white/20">
+<span class="material-symbols-outlined text-white text-[48px] animate-pulse" data-icon="center_focus_strong">center_focus_strong</span>
+</div>
+</div>
+<div class="animate-scan"></div>
+<div class="absolute bottom-lg left-lg right-lg flex justify-between items-end">
+<div class="bg-canvas-black/40 backdrop-blur-md p-md rounded-lg text-white">
+<div class="flex items-center gap-xs font-caption text-caption">
+<span>Edge Inference Status:</span>
+<span class="w-2 h-2 rounded-full bg-action-blue-dark animate-dot-pulse ml-xs"></span>
+<span class="text-action-blue-dark font-bold">Ready</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Global Footer -->
+<footer class="w-full py-xl px-lg bg-surface border-t border-hairline mt-auto">
+<div class="max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between items-center gap-lg">
+<div class="flex items-center gap-lg">
+<span class="font-nav-link text-nav-link text-ink-muted">© 2024 SoPilot Inc.</span>
+<span class="font-nav-link text-nav-link text-ink-muted cursor-pointer hover:text-on-surface transition-colors">Privacy Policy</span>
+<span class="font-nav-link text-nav-link text-ink-muted cursor-pointer hover:text-on-surface transition-colors">System Requirements</span>
+</div>
+<div class="flex items-center gap-sm">
+<div class="w-2 h-2 rounded-full bg-green-500"></div>
+<span class="font-nav-link text-nav-link text-on-surface-variant">All Local Systems Operational</span>
+</div>
+</div>
+</footer>
+<script>
+        // Atmospheric parallax on the image
+        window.addEventListener('mousemove', (e) => {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            const img = document.querySelector('img[data-alt]');
+            if (img) {
+                const x = (window.innerWidth / 2 - e.pageX) / 50;
+                const y = (window.innerHeight / 2 - e.pageY) / 50;
+                img.style.transform = `scale(1.05) translate(${x}px, ${y}px)`;
+            }
+        });
+
+        // Intersection Observer for Privacy Icons
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelectorAll('.privacy-icon-reveal').forEach(el => {
+                    el.style.opacity = '1';
+                    el.style.transform = 'scale(1)';
+                });
+                return;
+            }
+
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.1
+            };
+
+            const iconObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach((entry, index) => {
+                    if (entry.isIntersecting) {
+                        setTimeout(() => {
+                            entry.target.classList.add('is-visible');
+                        }, index * 150); // Staggered reveal
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, observerOptions);
+
+            document.querySelectorAll('.privacy-icon-reveal').forEach((icon) => {
+                iconObserver.observe(icon);
+            });
+        });
+    </script>
+</body></html>

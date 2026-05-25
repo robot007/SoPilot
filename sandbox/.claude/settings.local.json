@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/zhensong/project/SoPilot/**)",
+      "Read(//Users/zhensong/project/SoPilot/doc/**)",
+      "Bash(/Users/zhensong/project/SoPilot/.venv/bin/python -c \"from yolo26mlx import YOLO; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(/Users/zhensong/project/SoPilot/.venv/bin/python -c ' *)",
+      "Bash(YOLO_MLX_MODEL=/Users/zhensong/project/SoPilot/models/yolo26n.npz /Users/zhensong/project/SoPilot/.venv/bin/python Resources/yolo_mlx_face_worker.py)",
+      "Bash(/Users/zhensong/project/SoPilot/.venv/bin/python -m py_compile Resources/yolo_mlx_face_worker.py)",
+      "Bash(swift build *)",
+      "Bash(./build.sh)",
+      "Bash(/Users/zhensong/project/SoPilot/.venv/bin/python *)"
+    ]
+  }
+}

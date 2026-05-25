@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.1.0",
+  "package": {
+    "id": "bp_cuff_on_sleeve_quit_checker",
+    "name": "Blood Pressure Sleeve Not Rolled Checker",
+    "version": "0.1.0",
+    "category": "Healthcare Workflow",
+    "creator": "SoPilot",
+    "description": "Checks the negative BP workflow case where a cuff is still over a sleeve.",
+    "safety_note": "For workflow assistance only. Not medical diagnosis."
+  },
+  "runtime": {
+    "decision_policy": {
+      "final_decision": "local_rule_engine",
+      "cloud_vlm_allowed": false
+    }
+  },
+  "tags": [
+    {"id": "cuff", "name": "Arm cuff"},
+    {"id": "sleeve", "name": "Sleeve"}
+  ],
+  "steps": [
+    {"id": "S1", "name": "Roll sleeve", "required": true, "order": 1}
+  ],
+  "rules": [
+    {
+      "id": "S1_cuff_on_sleeve_quit",
+      "step_id": "S1",
+      "type": "overlap",
+      "source_tag": "cuff",
+      "target_tag": "sleeve",
+      "min_overlap_ratio": 0.1,
+      "ambiguity_margin_ratio": 0.05,
+      "min_confidence": 0.5,
+      "failure_message": "The cuff was not detected on top of the sleeve in the final checked frame."
+    }
+  ]
+}

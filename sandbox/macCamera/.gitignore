@@ -1,0 +1,38 @@
+# Swift Package Manager
+.build/
+.swiftpm/xcode/
+Packages/
+
+# Xcode
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# App/package build artifacts
+*.app
+*.dSYM
+*.dSYM.zip
+*.ipa
+*.dmg
+
+# macOS
+.DS_Store
+
+# Python helper cache
+__pycache__/
+*.py[cod]
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+BP-video/*

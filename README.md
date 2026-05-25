@@ -1,786 +1,361 @@
-# YOLO26 MLX
+# SoPilot
+![Private SOP video checking without VLM fine-tuning bills](doc/img/readme-subtitle.svg)
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org)
-[![MLX](https://img.shields.io/badge/MLX-0.30.3%2B-FF6F00.svg)](https://github.com/ml-explore/mlx)
-[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-M1%2FM2%2FM3%2FM4-000000.svg?logo=apple)](https://support.apple.com/en-us/116943)
-[![CI](https://github.com/thewebAI/yolo-mlx/actions/workflows/ci.yml/badge.svg)](https://github.com/thewebAI/yolo-mlx/actions/workflows/ci.yml)
+<img src="doc/img/soup-logo.png" alt="SOUP logo" width="150">
 
-Pure [MLX](https://github.com/ml-explore/mlx) implementation of YOLO26 for Apple Silicon. No PyTorch dependency at runtime.
+version 1.6
 
-YOLO26 is the latest generation of the [YOLO](https://docs.ultralytics.com/models/yolo26/) real-time object detection family by [Ultralytics](https://github.com/ultralytics/ultralytics), featuring NMS-free end-to-end detection and simplified DFL-free box regression. This project re-implements the full inference and training pipeline in Apple's [MLX](https://github.com/ml-explore/mlx) framework for native Metal GPU acceleration on Apple Silicon.
+5/24/2026
 
-## Table of Contents
+SOP stands for Standard Operating Procedure, a step-by-step protocol that ensures consistency and quality across physical and regulated workflows. The global SOP management market is around $5.5B in 2026, projected to reach $9.3B by 2033 [1,2]. SOPs are the backbone of repeatable work in healthcare, labs, manufacturing, field service, and safety programs. When followed correctly, they reduce rework, training costs, audit risk, and human error. When skipped or inconsistently checked, the fallout includes failed inspections, customer claims, product defects, and safety incidents. A practical validation tool therefore has direct market value: it turns everyday workflow video into measurable compliance evidence without enterprise-scale AI budgets.
 
-- [Highlights](#highlights)
-- [Validation Results](#validation-results-coco-val2017-5000-images)
-- [Tracking Results](#tracking-results-mot17-bytetrack) ![new](https://img.shields.io/badge/NEW-blue)
-- [Segmentation Results](#segmentation-results-coco-val2017-5000-images) ![new](https://img.shields.io/badge/NEW-blue)
-- [Performance](#performance)
-- [Requirements](#requirements)
-- [Project Structure](#project-structure)
-- [Quick Start: Inference](#quick-start-inference)
-- [Quick Start: Training](#quick-start-training)
-- [Quick Start: Tracking](#quick-start-tracking) ![new](https://img.shields.io/badge/NEW-blue)
-- [Quick Start: Tracking Training](#quick-start-tracking-training) ![new](https://img.shields.io/badge/NEW-blue)
-- [Quick Start: Segmentation](#quick-start-segmentation) ![new](https://img.shields.io/badge/NEW-blue)
-- [Quick Start: Segmentation Training](#quick-start-segmentation-training) ![new](https://img.shields.io/badge/NEW-blue)
-- [Full Setup](#full-setup)
-- [Inference Benchmarking](#inference-benchmarking)
-- [COCO val2017 Validation](#coco-val2017-validation-map)
-- [Training Benchmarking](#training-benchmarking)
-- [MOT17 Tracking Evaluation](#mot17-tracking-evaluation) ![new](https://img.shields.io/badge/NEW-blue)
-- [Segmentation Inference Benchmarking](#segmentation-inference-benchmarking) ![new](https://img.shields.io/badge/NEW-blue)
-- [COCO val2017 Segmentation Validation](#coco-val2017-segmentation-validation-map) ![new](https://img.shields.io/badge/NEW-blue)
-- [Segmentation Training Benchmarking](#segmentation-training-benchmarking) ![new](https://img.shields.io/badge/NEW-blue)
-- [Architecture](#architecture)
-- [Contributing](#contributing)
-- [License](#license)
+SoPilot is a local-first SOP video checker for physical workflows. It is inspired by GB300 manufacturing process in NVIDIA 2026 keynote speech on GTC Washington, D.C. 
+That direction is personal for this project: **I was one of the three engineers who developed the demo referenced in that keynote segment**.
+Continue along the line, I further propose a novel SOUP rule engine quickly combine YOLO [3] and Apple FastVLM [4], a Vision Language Model (VLM), to decide whether each SOP step passed, failed, or needs review.
 
-## Highlights
 
-- **Pure MLX** — 100% MLX at runtime, leverages Metal GPU acceleration via `mx.compile`
-- **Apple Silicon Optimized** — Designed for M1/M2/M3/M4 chips
-- **End-to-End Detection** — NMS-free detection with one-to-one matching
-- **Full Training Pipeline** — MuSGD and AdamW optimizers, EMA, warmup, LR scheduling
-- **Official-Matching Accuracy** — COCO val2017 mAP with most models within 0.2% and a maximum deviation of 0.5%.
-- **Multi-Object Tracking** — ByteTrack and BoT-SORT trackers with pure-MLX Kalman filters, MOT17 evaluation support
-- **Instance Segmentation** — Segment26 head with multi-scale Proto26, mask mAP matching official results ![new](https://img.shields.io/badge/NEW-blue)
+![Figure 5: Screen capture from GTC 2026 Keynote](doc/img/DeepHowNVDA2026.png)
 
-## Validation Results (COCO val2017, 5000 images)
+- [NVIDIA GTC Washington, D.C. Keynote with CEO Jensen Huang, demo around **1:31:04**](https://www.youtube.com/watch?v=lQHK61IDFH4&t=5464s)
 
-| Model | MLX mAP50-95 | Official mAP50-95 | Gap | FPS |
-|-------|-------------|-------------------|------|-----|
-| yolo26n | **40.2%** | 40.1% | +0.1% | 170.6 |
-| yolo26s | **47.6%** | 47.8% | -0.2% | 105.3 |
-| yolo26m | **52.3%** | 52.5% | -0.2% | 54.6 |
-| yolo26l | **53.9%** | 54.4% | -0.5% | 43.6 |
-| yolo26x | **56.7%** | 56.9% | -0.2% | 24.3 |
 
-## Tracking Results (MOT17, ByteTrack) ![new](https://img.shields.io/badge/NEW-blue)
+The target users—small clinics, labs, factories, field-service teams, trainers, and operators—face two practical problems with today's "ask a VLM about the video" approach:
 
-Evaluated on MOT17-09-SDP sequence (525 frames) with ByteTrack tracker on **Apple M4 Pro**. MOTA/IDF1 cross-validated against PyTorch (MPS & CPU).
+- Fine-tuning and running large VLMs for every long-tail SOP object is prohibitively expensive.
+- Raw workflow video contains private medical, workplace, customer, or facility data that should stay on-device by default.
 
-| Model | MLX MOTA | PyTorch MOTA | MLX IDF1 | MLX FPS | MPS FPS | CPU FPS | MLX vs CPU |
-|-------|----------|-------------|----------|---------|---------|---------|------------|
-| yolo26n | **46.6** | 45.2 | 56.1 | **37.2** | 34.1 | 8.3 | **4.5×** |
-| yolo26s | **46.6** | 44.9 | 50.6 | 21.5 | 22.1 | 4.3 | **5.0×** |
-| yolo26m | **45.6** | 38.2 | 54.6 | **10.6** | 10.5 | 2.2 | **4.8×** |
-| yolo26l | **48.5** | 42.2 | 53.5 | 8.8 | 8.9 | 1.6 | **5.5×** |
-| yolo26x | **38.7** | 35.1 | 52.5 | **4.7** | 3.9 | 1.0 | **4.7×** |
+SoPilot's answer is simple: keep the video and final decision local, train a small detector for domain objects, and use VLMs only as optional advisory help for ambiguous cases.
 
-## Segmentation Results (COCO val2017, 5000 images) ![new](https://img.shields.io/badge/NEW-blue)
-
-| Model | MLX mAP<sup>mask</sup> | Official mAP<sup>mask</sup> | MLX mAP<sup>box</sup> | Official mAP<sup>box</sup> | FPS |
-|-------|------------------------|-------------------------------|------------------------|-------------------------------|-----|
-| yolo26n-seg | **33.6** | 33.9 | **39.5** | 39.6 | 63.7 |
-| yolo26s-seg | **39.7** | 40.0 | **47.2** | 47.3 | 46.8 |
-| yolo26m-seg | **43.7** | 44.1 | **52.1** | 52.5 | 23.4 |
-| yolo26l-seg | **45.2** | 45.5 | **54.2** | 54.4 | 21.0 |
-| yolo26x-seg | **46.6** | 47.0 | **56.2** | 56.5 | 12.5 |
-
-## Performance
-
-All benchmarks were run on an **Apple M4 Pro** with macOS 26.3.1 and Python 3.14.3. YOLO26 MLX delivers significant speedups over PyTorch on Apple Silicon. For inference, MLX is up to **2.07× faster** than PyTorch MPS (yolo26n: 170.6 vs 82.6 FPS) and up to **3.56× faster** than PyTorch CPU. For training (COCO128, 10 epochs), MLX is up to **2.65× faster** than MPS (yolo26n: 64.1s vs 169.8s) and up to **3.99× faster** than CPU. For tracking (MOT17, imgsz=1440), MLX matches or exceeds PyTorch MPS speed (faster for n, m, x; tied for s, l), while both are **4.5–5.5× faster** than PyTorch CPU. For segmentation (COCO val2017 + COCO128-Seg, imgsz=640), MLX matches official mask mAP within **0.3–0.4 pp** and is **1.00×–1.39× faster than MPS** for inference and **1.25×–3.31× faster than MPS** for training. Smaller models benefit the most from MLX's Metal-optimized compute graph and `mx.compile` JIT, while larger models converge toward parity as the workload becomes compute-bound.
-
-![Speedup Comparison](assets/yolo26_speedup.png)
-
-MLX matches or exceeds PyTorch MPS tracking speed at imgsz=1440. MLX is faster for n, m, and x models; tied with MPS for s and l. Both are **4.5–5.5× faster** than PyTorch CPU. Tracking overhead is ~3–5 ms/frame thanks to batched Kalman updates and batch-precomputed coordinates. FPS numbers reflect wall-clock throughput; expect ~10% run-to-run variance on Apple Silicon.
-
-![Tracking FPS Comparison](assets/yolo26_tracking_fps.png)
-
-![Tracking Speedup](assets/yolo26_tracking_speedup.png)
-
-![new](https://img.shields.io/badge/NEW-blue) For segmentation, MLX matches official Ultralytics mask mAP within **0.3–0.4 pp** and box mAP within **0.1–0.4 pp** on COCO val2017 (5,000 images), evaluated with `pycocotools` at original-image resolution (RLE-encoded predictions) — the same methodology Ultralytics uses for its published numbers (`model.val(save_json=True)` → `process_mask_native` + pycocotools). For inference, MLX is faster than (or tied with) PyTorch MPS across all 5 model sizes — up to **1.39× faster** end-to-end (yolo26n-seg: 63.7 vs 45.7 FPS) and up to **4.67× faster** than PyTorch CPU (yolo26x-seg: 12.5 vs 2.7 FPS); forward-pass-only timings are MLX-favorable on every size including m-seg (35.5 ms vs 40.3 ms, 1.14×). For training (COCO128-Seg, 10 epochs, batch=4), MLX is the fastest backend on every size — **1.25×–3.31× faster than PyTorch MPS** and **3.47×–3.76× faster than PyTorch CPU**. See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for the full per-model breakdown.
-
-![Segmentation Speedup](assets/yolo26_seg_speedup.png)
-
-## Requirements
-
-- macOS with Apple Silicon (M1/M2/M3/M4)
-- Python 3.10+
-- MLX >=0.30.3, <0.31
-
-## Project Structure
-
-```
-yolo-mlx/
-├── src/yolo26mlx/                 # Core MLX package
-│   ├── cfg/                       # Model, dataset, and tracker YAML configs
-│   │   ├── models/26/yolo26-seg.yaml  # Segmentation model architecture
-│   │   └── datasets/coco128-seg.yaml  # COCO128-Seg dataset config
-│   ├── converters/                # PyTorch -> MLX weight converter
-│   ├── data/                      # Data loading, COCODataset (detection + segmentation)
-│   ├── engine/                    # YOLO, Predictor, Trainer, Validator, TrackerManager, Results
-│   ├── nn/                        # Network blocks: Detect, Segment26, Proto26, model builder
-│   ├── optim/                     # MuSGD and AdamW optimizers
-│   ├── trackers/                  # ByteTrack, BoT-SORT, Kalman filters, matching
-│   └── utils/                     # Losses (v8SegmentationLoss), ops, TAL, metrics, video I/O
-├── scripts/                       # Benchmark/eval/download utilities
-├── configs/                       # Dataset configs used by scripts
-├── tests/                         # Unit/integration tests
-├── GUIDE_INFERENCE_VALIDATION.md  # Inference + COCO validation guide
-├── GUIDE_SEGMENTATION.md          # Instance segmentation guide
-├── GUIDE_TRACKING.md              # Tracking guide
-├── GUIDE_TRAINING_BENCHMARK.md    # Training benchmark guide
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── LICENSE                        # AGPL-3.0
-├── Makefile                       # Common dev tasks (lint, format, test)
-├── README.md
-├── pyproject.toml
-└── webAI-contributor-license-agreement.md
-
-# Runtime folders (created by scripts when needed)
-datasets/
-images/
-models/
-results/
-```
+**Slogan:** Affordable SOP validation. Private by default. Auditable step by step.
 
 ---
 
-## Quick Start: Inference
+## Hackathon Snapshot
 
-Run object detection on an image in under 5 minutes.
-
-```bash
-# 1. Setup
-cd yolo-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[convert]"
-
-# 2. Download a pretrained model and convert to MLX format
-bash scripts/download_yolo26_models.sh          # downloads all .pt weights to models/
-yolo-mlx converters convert models/yolo26n.pt -o models/yolo26n.npz --verify
-
-# 3. Run inference
-mkdir -p images
-curl -fsSL -o images/bus.jpg https://ultralytics.com/images/bus.jpg
-```
-
-```python
-from yolo26mlx import YOLO
-
-model = YOLO("models/yolo26n.npz")
-results = model.predict("images/bus.jpg", conf=0.25)
-print(results[0])                    # detection summary
-results[0].save()                    # saves labeled image to results/
-```
-
-The `predict()` method accepts a file path, directory, PIL Image, or numpy array.
-Key parameters: `conf` (confidence threshold, default 0.25), `imgsz` (input size, default 640), `save` (auto-save results).
-
----
-
-## Quick Start: Training
-
-Fine-tune a YOLO26 model on your own data.
-
-```bash
-# 1. Setup (if not done already)
-cd yolo-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[convert]"
-
-# 2. Download and convert a pretrained model as starting weights
-bash scripts/download_yolo26_models.sh
-yolo-mlx converters convert models/yolo26n.pt -o models/yolo26n.npz --verify
-```
-
-```python
-from yolo26mlx import YOLO
-
-# Load pretrained MLX weights
-model = YOLO("models/yolo26n.npz")
-
-# Train on COCO128 (auto-downloaded, ~7 MB, 128 images)
-results = model.train(
-    data="coco128",       # dataset name or path to data YAML
-    epochs=10,
-    batch=4,
-    imgsz=640,
-    project="runs/train",
-    name="my_experiment",
-)
-```
-
-To train on a custom dataset, create a YAML config following the COCO format
-(see `configs/coco.yaml` for reference) and pass its path as `data`.
-Key parameters: `epochs` (default 100), `batch` (default 16), `imgsz` (default 640),
-`patience` (early stopping, default 50), `save_period` (checkpoint interval, -1 to disable).
-
-See [GUIDE_TRAINING_BENCHMARK.md](GUIDE_TRAINING_BENCHMARK.md) for detailed training and benchmarking workflows.
-
----
-
-## Quick Start: Tracking ![new](https://img.shields.io/badge/NEW-blue)
-
-Run multi-object tracking on a video in under 5 minutes.
-
-```bash
-# 1. Setup (if not done already)
-cd yolo-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[tracking]"
-pip install -e ".[convert]"
-
-# 2. Download and convert a model
-bash scripts/download_yolo26_models.sh
-yolo-mlx converters convert models/yolo26n.pt -o models/yolo26n.npz --verify
-
-# 3. Download MOT17 and create a sample pedestrian video (~3s, 1080p)
-bash scripts/download_mot17.sh
-python scripts/create_sample_video.py       # creates images/pedestrians.mp4
-```
-
-```python
-from yolo26mlx import YOLO
-
-model = YOLO("models/yolo26n.npz")
-
-# Track pedestrians — saves annotated output to results/pedestrians_tracked.mp4
-results = model.track("images/pedestrians.mp4", conf=0.25, save=True)
-
-# Access per-frame results
-for r in results:
-    if r.boxes.is_track:
-        print(r.boxes.id)     # track IDs (persistent across frames)
-        print(r.boxes.xyxy)   # bounding boxes
-```
-
-### Webcam Tracking
-
-```python
-# Real-time tracking from webcam (press 'q' to quit)
-results = model.track(0, conf=0.25, show=True)
-```
-
-### Frame-by-Frame Control
-
-For custom per-frame processing with `stream=True` (memory-efficient for long videos):
-
-```python
-from yolo26mlx import YOLO
-
-model = YOLO("models/yolo26n.npz")
-for result in model.track("video.mp4", stream=True):
-    boxes = result.boxes
-    if boxes.is_track:
-        for tid, box in zip(boxes.id, boxes.xyxy):
-            print(f"Track {tid}: {box}")
-```
-
-The `track()` method supports video files, webcam indices (`0`), and numpy frame arrays.
-Key parameters: `tracker` ("bytetrack.yaml" or "botsort.yaml"), `conf` (threshold), `show` (display), `save` (save output video), `vid_stride` (frame skip), `persist` (keep tracker state between calls).
-
-See `scripts/track_demo.py` for a complete tracking demo with batch and framewise modes.
-See [GUIDE_TRACKING.md](GUIDE_TRACKING.md) for the full tracking guide.
-
-**Output locations:**
-
-| Artifact | Path |
+| Item | Details |
 |---|---|
-| Pretrained weights (`.pt`) | `models/` |
-| Converted MLX weights (`.npz`) | `models/` |
-| Sample input video | `images/pedestrians.mp4` |
-| Annotated tracking video (`save=True`) | `results/pedestrians_tracked.mp4` |
+| Challenge | webAI YOLO26 MLX Build Challenge — May 2026 |
+| Track | Enterprise, with healthcare/home SOP validation as the demo domain |
+| Project | SoPilot — local-first SOP video checker powered by the SOUP Engine |
+| Core model | YOLO26 MLX `yolo26n`, running locally on Apple Silicon |
+| Demo SOP | Blood Pressure Monitor workflow |
+| Custom classes | `cuff`, `sleeve`, `upper_arm` |
+| Rule engine | `sandbox/soup-engine`, standalone Python package `sopilot-rules` |
+| Main design doc | [SOUP.md](SOUP.md) |
+| Demo video | TODO: paste 1-minute demo video URL |
+| Social post | TODO: paste X or LinkedIn URL |
+| Hardware | TODO: fill exact Mac model, chip, and RAM |
+| Team | TODO: Zhen Song / team members |
+
+Official challenge brief: [webAI YOLO26 MLX Build Challenge](https://community.webai.com/t/the-yolo26-mlx-build-challenge-may-2026/16).
 
 ---
 
-## Quick Start: Tracking Training ![new](https://img.shields.io/badge/NEW-blue)
+## What SoPilot Does
 
-Tracking uses standard detection models — no separate training pipeline is needed.
-Any YOLO26 model trained on detection can be used directly with `model.track()`.
-To improve tracking on a custom domain, fine-tune a detection model on objects
-you want to track, then use it for tracking.
+The BP Monitor demo checks whether the user follows this physical SOP:
 
-```bash
-# 1. Setup (if not done already)
-cd yolo-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[tracking]"
-pip install -e ".[convert]"
+1. Monitor is visible.
+2. Sleeve is rolled up.
+3. Cuff is placed on the upper arm.
+4. Cuff position is valid.
+5. Measurement happens only after setup is complete.
 
-# 2. Download and convert a pretrained model as starting weights
-bash scripts/download_yolo26_models.sh
-yolo-mlx converters convert models/yolo26n.pt -o models/yolo26n.npz --verify
+Instead of sending a video to a cloud VLM and asking for a free-form judgment, SoPilot:
+
+1. Runs YOLO26 MLX locally to detect objects such as `cuff`, `sleeve`, and `upper_arm`.
+2. Converts detections into structured evidence with timestamps, boxes, labels, and confidence.
+3. Evaluates SOUP rules locally for geometry, order, timing, and required steps.
+4. Produces a pass / quit / needs-review result with an audit trace.
+
+The rule engine is the final decision maker. VLM output, when used, is just another event that local rules can accept or reject.
+
+![Figure 3](doc/img/SOUP-dataflow-glass3.png)
+
+**Fig. 3.** SOUP Engine data flow across training and runtime phases.
+
+**Training phase (bottom).** A domain expert collects videos of the workflow being performed correctly and incorrectly, extracts representative frames, and labels the objects that matter (`cuff`, `sleeve`, `upper_arm`, `blood_pressure_monitor`, `grey_connector`, etc.). These labels train a small YOLO detector that specializes in the domain's vocabulary. The workflow is iterative — label, train, test, review errors, add examples, retrain — and produces a YOLO `.npz` model in the 10–100 MB range. In parallel, the expert authors the `.soup` package (metadata, steps, tags, rules), increasingly with LLM assistance (see §5).
+
+**Runtime phase (top).** The trained YOLO model is deployed inside the macOS app. During live video or a recorded playback, the app samples frames, runs YOLO locally to produce bounding boxes / labels / confidences, and overlays them on the preview. Detections are normalized into the SOUP schema and combined with scene events (button presses, timer ticks, UI markers). The SOUP rule engine evaluates the combined evidence against the `.soup` package and produces a step-by-step result with an explicit decision trace. An optional local VLM may add ambiguity explanations, and an optional cloud VLM may be consulted *only* after redaction, *only* for ambiguous frames, and *only* with user confirmation — never as the decision-maker.
+
+
+---
+
+## Why This Matters
+
+Physical SOP validation is useful in settings where mistakes are expensive but full enterprise AI infrastructure is unrealistic: medical-device setup, lab protocols, equipment inspection, shop-floor procedures, safety checks, and field service.
+
+The naive VLM-first path has poor economics. In [SOUP.md](SOUP.md), the estimated VLM fine-tuning path is roughly:
+
+| Scope | VLM fine-tuning path | SOUP hybrid path |
+|---|---:|---:|
+| 10 SOP pilot | ~$23k–$71k dev cost | ~$8k–$20k dev cost |
+| 100 SOP productization | ~$82k–$312k dev cost | ~$51k–$154k dev cost |
+
+The cost reduction comes from shifting domain learning away from a large VLM and into a small YOLO detector plus explicit local rules. The privacy benefit comes from keeping raw video, SOP rules, model weights, and final decisions local by default.
+
+---
+
+## Inspiration: Physical AI for Smaller Operators
+
+SoPilot is inspired by NVIDIA's physical-AI direction, especially Jensen Huang's GTC Washington, D.C. keynote segment on real-world AI systems:
+
+![Figure 5: Screen capture from GTC 2026 Keynote](doc/img/DeepHowNVDA2026.png)
+
+- [NVIDIA GTC Washington, D.C. Keynote with CEO Jensen Huang, demo around **1:31:04**](https://www.youtube.com/watch?v=lQHK61IDFH4&t=5464s)
+
+
+That direction is personal for this project: **I was one of the four engineers who developed the demo referenced in that keynote segment**. SoPilot asks what it would take to bring the same physical-AI idea down to a practical, privacy-preserving tool that small businesses can actually deploy.
+
+---
+
+## SOUP Recap
+
+SOUP means **Standard Operating Understanding Package**. A SOUP package is the installable definition of a physical SOP: what objects matter, what steps must happen, what relationships count as correct, which model provides evidence, and which privacy mode is allowed.
+
+Key points from [SOUP.md](SOUP.md):
+
+- **VLMs are not enough.** General VLMs can miss long-tail domain objects such as a blood-pressure cuff, HVAC connector, shop-floor jig, or specialized tool.
+- **Fine-tuning VLMs is often the wrong first move.** The project's estimate puts VLM fine-tuning out of reach for many 10-SOP deployments.
+- **YOLO handles domain grounding.** A small YOLO detector learns the site-specific objects and runs locally.
+- **Rules handle correctness.** The SOUP engine evaluates geometry, sequence, timing, confidence, and required-step rules.
+- **VLMs remain useful, but advisory.** A local or guarded cloud VLM can help with ambiguous scene understanding, but it never owns the final decision.
+- **The result is auditable.** Each decision maps back to a step, rule, evidence frame, confidence, and privacy log.
+
+SOUP is not trying to make every user "ship SOP as code." The user-facing product is simpler: install or create a package, run the workflow, and get a private, explainable result.
+
+---
+
+## Demo Cases
+
+### Case 1 — Correct BP workflow
+
+![Correct BP workflow](doc/img/yolo-cuff038.03s.png)
+
+The user rolls up the sleeve, places the cuff on the upper arm, and completes measurement. The engine reaches the final state:
+
+```text
+SOUP state=Done ... message=measurement_done occurred after all required steps.
+FINAL_SOUP_STATUS=passed
+TASK_FINISHED=true
 ```
 
-```python
-from yolo26mlx import YOLO
+### Case 2 — Sleeve not rolled
 
-# Step 1: Fine-tune on your detection dataset
-model = YOLO("models/yolo26n.npz")
-results = model.train(
-    data="coco128",       # dataset name or path to data YAML
-    epochs=10,
-    batch=4,
-    imgsz=640,
-    project="runs/train",
-    name="my_detector",
-)
+![Sleeve not rolled](doc/img/yolo_cuff_sleeve014.png)
 
-# Step 2: Use the fine-tuned model for tracking
-model = YOLO("runs/train/my_detector/best.safetensors")
-results = model.track("video.mp4", conf=0.25, save=True)
+The cuff overlaps the sleeve. SoPilot rejects the run and tells the user where to recover:
+
+```text
+FINAL_SOUP_STATUS=quit
+ERROR=need to roll up sleeve, go to 'S1' step
+TASK_FINISHED=false
 ```
 
-To train on a custom dataset, create a YAML config following the COCO format
-(see `configs/coco.yaml` for reference) and pass its path as `data`.
-Key training parameters: `epochs` (default 100), `batch` (default 16), `imgsz` (default 640),
-`patience` (early stopping, default 50), `save_period` (checkpoint interval, -1 to disable).
-Key tracker parameters: `tracker` ("bytetrack.yaml" or "botsort.yaml"), `conf`, `imgsz`.
+### Case 3 — Process hack / ambiguous action
 
-**Output locations:**
+![Process hack attempt](doc/img/yolo-hack1.png)
 
-| Artifact | Path |
+The user presents cuff-like visual evidence without clearly placing the cuff on the upper arm. YOLO detects objects, then local FastVLM is used once as a semantic cross-check. The VLM answer is uncertain, so the SOUP rule engine does not pass the workflow:
+
+```text
+VLM_ANSWER_NORMALIZED=unsure
+SOUP state=Confirm cuff on upper arm ... decision=uncertain ... message=The cuff was not confirmed on the upper arm.
+FINAL_SOUP_STATUS=needs_review
+TASK_FINISHED=false
+```
+
+---
+
+## How YOLO26 MLX Is Used
+
+YOLO26 MLX is the local perception layer for the demo.
+
+| Component | Role |
 |---|---|
-| Training checkpoints | `runs/train/<name>/best.safetensors`, `last.safetensors` |
-| Annotated tracking video (`save=True`) | `results/<video>_tracked.mp4` |
-| Downloaded dataset (auto) | `datasets/coco128/` |
+| Model variant | `yolo26n` |
+| Runtime | Apple MLX / Apple Silicon |
+| Custom BP model | `images/BP_sc_runs/train/bp_sc_yolo26n.npz` |
+| Classes | `cuff`, `sleeve`, `upper_arm` |
+| Output | Bounding boxes, labels, confidence, timestamps |
+| SOUP use | Rule evidence for object presence, overlap, position, and sequence |
 
-See [GUIDE_TRACKING.md](GUIDE_TRACKING.md) for the full tracking guide and [GUIDE_TRAINING_BENCHMARK.md](GUIDE_TRAINING_BENCHMARK.md) for detailed training and benchmarking workflows.
-
----
-
-## Quick Start: Segmentation ![new](https://img.shields.io/badge/NEW-blue)
-
-Run instance segmentation on an image in under 5 minutes.
-
-```bash
-# 1. Setup
-cd yolo-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[segment]"
-pip install -e ".[convert]"
-
-# 2. Download a pretrained segmentation model and convert to MLX format
-bash scripts/download_yolo26_models.sh          # downloads all .pt weights to models/
-yolo-mlx converters convert models/yolo26n-seg.pt -o models/yolo26n-seg.npz --verify
-
-# 3. Run segmentation
-mkdir -p images
-curl -fsSL -o images/bus.jpg https://ultralytics.com/images/bus.jpg
-```
-
-```python
-from yolo26mlx import YOLO
-
-model = YOLO("models/yolo26n-seg.npz", task="segment")
-results = model.predict("images/bus.jpg")
-print(results[0])                    # detection + mask summary
-results[0].save()                    # saves annotated image with mask overlays to results/
-```
-
-Access detection and mask data:
-
-```python
-boxes = results[0].boxes             # Boxes object — (N, 6) [x1, y1, x2, y2, conf, cls]
-masks = results[0].masks             # Masks object — (N, H, W) binary masks
-print(f"Detected {len(boxes)} objects with masks of shape {masks.data.shape}")
-```
-
-See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for the full segmentation guide.
+The detector is small enough to run locally and specific enough to catch domain objects that a general VLM may not name reliably.
 
 ---
 
-## Quick Start: Segmentation Training ![new](https://img.shields.io/badge/NEW-blue)
+## How To Run
 
-Train a YOLO26-seg model on segmentation data.
+The repo contains two related Python packages: YOLO26 MLX at the repo root and the SOUP rule engine under `sandbox/soup-engine`.
 
-```bash
-# 1. Setup (if not done already)
-cd yolo-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-pip install -e ".[segment]"
-pip install -e ".[convert]"
-
-# 2. Download and convert a pretrained segmentation model as starting weights
-bash scripts/download_yolo26_models.sh
-yolo-mlx converters convert models/yolo26n-seg.pt -o models/yolo26n-seg.npz --verify
-```
-
-```python
-from yolo26mlx import YOLO
-
-# Load pretrained segmentation weights
-model = YOLO("models/yolo26n-seg.npz", task="segment")
-
-# Train on COCO128-Seg (auto-downloaded, ~7 MB, 128 images with polygon labels)
-results = model.train(
-    data="coco128-seg",    # dataset name or path to data YAML
-    epochs=10,
-    batch=4,
-    imgsz=640,
-    project="runs/train",
-    name="my_seg_experiment",
-)
-```
-
-The segmentation training loss includes five components: box, cls, dfl, seg (per-instance mask), and sem (auxiliary semantic segmentation).
-
-To train on a custom dataset, create polygon-annotation labels in YOLO-seg format
-(`class_id x1 y1 x2 y2 ... xN yN` per line, normalized coordinates) and a YAML config
-(see `src/yolo26mlx/cfg/datasets/coco128-seg.yaml` for reference).
-
-**Output locations:**
-
-| Artifact | Path |
-|---|---|
-| Training checkpoints | `runs/train/<name>/best.safetensors`, `last.safetensors` |
-| Downloaded dataset (auto) | `datasets/coco128-seg/` |
-
-See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for the full segmentation guide including evaluation and benchmarking.
-
----
-
-## Full Setup
+### 1. Install local packages
 
 ```bash
-cd yolo-mlx
-
-# Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install the package
-pip install -e .
-
-# Install tracking dependencies (OpenCV, lap, scipy — required for model.track())
-pip install -e ".[tracking]"
-
-# Install segmentation dependencies (pycocotools, matplotlib, opencv-python — required for model.predict() with task="segment", COCO mask mAP, and chart generation)
-pip install -e ".[segment]"
-
-# Install conversion dependencies (required to convert .pt → .npz weights)
-pip install -e ".[convert]"
+python -m pip install --upgrade pip
+python -m pip install -e ".[tracking,vlm]"
+python -m pip install -e sandbox/soup-engine
 ```
 
-For PyTorch MPS/CPU comparison benchmarks, see [GUIDE_INFERENCE_VALIDATION.md](GUIDE_INFERENCE_VALIDATION.md) and [GUIDE_TRAINING_BENCHMARK.md](GUIDE_TRAINING_BENCHMARK.md).
+For rule-engine-only work, the root YOLO package is not required:
 
-Runtime directories (`datasets/`, `images/`, `models/`, `results/`) are created
-automatically by the scripts and evaluation tools when needed.
+```bash
+python -m pip install -e sandbox/soup-engine
+```
+
+### 2. Validate the BP SOUP package
+
+```bash
+python -m sopilot_rules.tools.validate_soup \
+  sandbox/soup-engine/tests/fixtures/bp/bp_monitor.soup.json
+```
+
+### 3. Run rule-engine tests
+
+```bash
+cd sandbox/soup-engine
+python3 -m unittest discover -s tests -p "test_*.py"
+```
+
+### 4. Run the correct BP video integration
+
+From the repo root:
+
+```bash
+SOUP_RUN_VIDEO_INTEGRATION=1 \
+SOUP_VIDEO_PATH=sandbox/BP-video/BP_cuff_correct.mp4 \
+SOUP_LOG_PATH=sandbox/BP-video/test_log_SOUP_cuff_correct.log \
+python sandbox/soup-engine/tests/integration/test_SOUP_sleeve.py
+```
+
+Expected result:
+
+```text
+FINAL_SOUP_STATUS=passed
+TASK_FINISHED=true
+```
+
+### 5. Run the sleeve-not-rolled case
+
+```bash
+SOUP_RUN_VIDEO_INTEGRATION=1 \
+SOUP_SIMPLE_CUFF_ON_SLEEVE_QUIT=1 \
+SOUP_VIDEO_PATH=sandbox/BP-video/BP_sleeve.mp4 \
+SOUP_LOG_PATH=sandbox/BP-video/BP-sleeve-wrong.log \
+python sandbox/soup-engine/tests/integration/test_SOUP_sleeve.py
+```
+
+Expected result:
+
+```text
+FINAL_SOUP_STATUS=quit
+TASK_FINISHED=false
+```
+
+### 6. Run the hack / VLM cross-check case
+
+This requires the local FastVLM setup used by `sandbox/macCamera`.
+
+```bash
+SOUP_RUN_VIDEO_INTEGRATION=1 \
+python sandbox/soup-engine/tests/integration/test_SOUP_bp_hack_vlm.py
+```
+
+
+Expected result:
+
+```text
+FINAL_SOUP_STATUS=needs_review
+TASK_FINISHED=false
+TEST=passed
+```
 
 ---
 
-## Inference Benchmarking
+## Repository Map
 
-Measures MLX inference latency and throughput.
-
-```bash
-# All models
-python scripts/benchmark_yolo26_inference.py --skip-mps --skip-cpu
-
-# Specific models only
-python scripts/benchmark_yolo26_inference.py --models n s --skip-mps --skip-cpu
-
-# More timed runs for stable results
-python scripts/benchmark_yolo26_inference.py --runs 20 --skip-mps --skip-cpu
-```
-
-**Output:** `results/yolo26_inference_three_way.json` (override with `--output path.json`)
-
-| Metric | Description |
-|--------|-------------|
-| End-to-end latency (ms) | Full predict including pre/post processing |
-| Forward-pass-only (ms) | Model inference only |
-| FPS | Throughput (1000 / mean_ms) |
-| Peak memory (MB) | MLX Metal memory usage |
-
-The benchmark script also supports PyTorch MPS and CPU backends for comparison. See [GUIDE_INFERENCE_VALIDATION.md](GUIDE_INFERENCE_VALIDATION.md) for full multi-backend benchmarking instructions.
-
-**Defaults:** 3 warmup runs, 10 timed runs, 640×640 image size
-
-![Inference FPS Comparison](assets/yolo26_inference_fps.png)
+| Path | Purpose |
+|---|---|
+| [SOUP.md](SOUP.md) | Full SOUP design paper and cost argument |
+| [yolo26-README.md](yolo26-README.md) | YOLO26 MLX implementation notes and benchmarks |
+| `src/yolo26mlx/` | YOLO26 MLX package |
+| `images/BP_sc_runs/train/bp_sc_yolo26n.npz` | Custom BP detector used by the demo |
+| `sandbox/soup-engine/` | Standalone deterministic SOUP rule engine |
+| `sandbox/soup-engine/tests/fixtures/bp/` | BP SOUP fixtures |
+| `sandbox/soup-engine/tests/integration/` | BP video integration tests |
+| `sandbox/BP-video/` | Demo videos, overlays, and logs |
+| `doc/img/` | README and SOUP paper images |
 
 ---
 
-## COCO val2017 Validation (mAP)
+## Privacy Model
 
-Evaluates accuracy on the full COCO val2017 set (5,000 images) using official pycocotools.
+Default mode is local-first:
 
-### Setup COCO Dataset
+- Raw video stays local.
+- YOLO model weights stay local.
+- SOP rules stay local.
+- The final pass / fail / needs-review decision is local.
+- Local VLM is optional and advisory.
+- Cloud VLM, if enabled later, must be user-approved, minimized/redacted, and advisory only.
 
-```bash
-# Automatic download script
-bash scripts/download_coco_val2017.sh datasets/coco
-
-# Or manually:
-mkdir -p datasets/coco/images datasets/coco/annotations datasets/coco/labels
-
-curl -L -o datasets/coco/images/val2017.zip http://images.cocodataset.org/zips/val2017.zip
-unzip datasets/coco/images/val2017.zip -d datasets/coco/images/
-rm datasets/coco/images/val2017.zip
-
-curl -L -o datasets/coco/annotations/annotations_trainval2017.zip http://images.cocodataset.org/annotations/annotations_trainval2017.zip
-unzip datasets/coco/annotations/annotations_trainval2017.zip -d datasets/coco/
-rm datasets/coco/annotations/annotations_trainval2017.zip
-
-curl -L -o datasets/coco/labels/val2017.zip https://github.com/ultralytics/assets/releases/download/v0.0.0/coco2017labels-segments.zip
-unzip datasets/coco/labels/val2017.zip -d datasets/coco/
-rm datasets/coco/labels/val2017.zip
-```
-
-### Run Validation
-
-```bash
-# Single model
-python scripts/evaluate_coco_val.py --model yolo26n --data datasets/coco
-
-# All 5 models
-python scripts/evaluate_coco_val.py --model all --data datasets/coco
-
-# Quick sanity check (100 images)
-python scripts/evaluate_coco_val.py --model yolo26n --data datasets/coco --subset 100
-
-# Custom thresholds
-python scripts/evaluate_coco_val.py --model yolo26n --data datasets/coco --conf 0.001 --iou 0.7
-```
-
-**Output:** `results/` directory (override with `--output dir/`)
-
-| Metric | Description |
-|--------|-------------|
-| mAP@0.5:0.95 | Primary COCO metric |
-| mAP@0.5 | AP at IoU=0.50 |
-| mAP@0.75 | AP at IoU=0.75 |
-| mAP (small/medium/large) | AP by object size |
-
-**Defaults:** conf=0.001, IoU=0.7, imgsz=640, batch=16 (all overridable via CLI flags). Max detections per image is fixed at 300 (model constant in `Detect`).
+This matters because SOP videos can show patients, homes, employees, facilities, products, tools, customer sites, and regulated workflows.
 
 ---
 
-## Training Benchmarking
+## What Makes SoPilot Different
 
-COCO128 dataset (~7 MB, 128 images) is downloaded automatically on first run.
-
-```bash
-# All models
-python scripts/benchmark_yolo26_training_mlx.py
-
-# Specific models with custom settings
-python scripts/benchmark_yolo26_training_mlx.py --models n s --epochs 10 --batch 4
-```
-
-**Output:** `results/yolo26_mlx_training_final.json` (override with `--output path.json`)
-
-| Metric | Description |
-|--------|-------------|
-| Training time (s) | Total wall-clock time |
-| Time/epoch (s) | Average per epoch |
-| Final loss | End-of-training loss |
-| mAP@0.5 | Post-training accuracy |
-| Peak memory (MB) | Metal peak memory |
-
-**Training defaults:** 10 epochs, batch=4, COCO128 dataset, optimizer=auto (mirrors Ultralytics: AdamW for ≤10k iter, MuSGD otherwise — short COCO128 runs use AdamW), lr=0.000119 (auto-LR formula `0.002 * 5 / (4 + nc)` for nc=80). All overridable via `--epochs`, `--batch`, `--lr`, `--output`.
-
-For PyTorch MPS/CPU training benchmarks and chart generation, see [GUIDE_TRAINING_BENCHMARK.md](GUIDE_TRAINING_BENCHMARK.md).
-
-![Training Time Comparison](assets/yolo26_training_time.png)
+| Generic VLM SOP checker | SoPilot |
+|---|---|
+| Sends video to a model and asks "did this pass?" | Runs local detection and local rules first |
+| Expensive to adapt to domain objects | Trains a small YOLO detector for those objects |
+| Hard to audit | Returns step-level decisions and evidence |
+| Privacy depends on cloud policy | Private by default |
+| VLM may become the judge | Rule engine is always the judge |
 
 ---
 
-## MOT17 Tracking Evaluation ![new](https://img.shields.io/badge/NEW-blue)
+## Limitations
 
-Evaluates tracking accuracy on the [MOT17](https://motchallenge.net/data/MOT17/) training set (7 sequences, 5,316 frames) with ground-truth annotations.
+This is a hackathon MVP, not a medical device or regulated compliance product.
 
-### Setup MOT17 Dataset
-
-```bash
-# Automatic download (~5.5 GB)
-bash scripts/download_mot17.sh
-```
-
-### Run Evaluation
-
-```bash
-# MLX evaluation
-python scripts/evaluate_mot17.py --model yolo26n
-python scripts/evaluate_mot17.py --model all
-
-# PyTorch MPS comparison
-python scripts/evaluate_mot17_pytorch.py --model all --device mps
-
-# PyTorch CPU comparison
-python scripts/evaluate_mot17_pytorch.py --model all --device cpu
-
-# Quick test on one sequence
-python scripts/evaluate_mot17.py --model yolo26n --sequences MOT17-09-SDP
-
-# Use BoT-SORT instead of ByteTrack
-python scripts/evaluate_mot17.py --model yolo26n --tracker botsort
-```
-
-**Output:** `results/tracking/` directory with JSON results and MOTChallenge-format `.txt` prediction files.
-
-### Generate Tracking Charts
-
-After running evaluations on all backends, collect results and generate comparison charts:
-
-```bash
-# Collect results into a single JSON
-python scripts/benchmark_tracking_collect_results.py
-
-# Generate charts (MOTA, IDF1, FPS, speedup, overhead, summary dashboard)
-python scripts/benchmark_tracking_generate_charts.py
-```
-
-**Output:** `results/charts/yolo26_tracking_*.png` (6 charts). Override output directory with `--output`, format with `--format` (png/pdf/svg).
-
-| Metric | Description |
-|--------|-------------|
-| MOTA | Multi-Object Tracking Accuracy |
-| IDF1 | ID F1 Score (identity preservation) |
-| MT/ML | Mostly Tracked / Mostly Lost (%) |
-| FP/FN | False Positives / False Negatives |
-| IDSW | ID Switches |
-| Frag | Fragmentations |
-| FPS | End-to-end throughput (detection + tracking) |
-
-**Defaults:** imgsz=1440, conf=0.25, IoU=0.7, tracker=bytetrack. All overridable via CLI flags.
-
-See [GUIDE_TRACKING.md](GUIDE_TRACKING.md) for full tracking documentation.
-
-### Per-Sequence Results (yolo26s + ByteTrack, full MOT17 train)
-
-| Sequence | MOTA | IDF1 | FP | FN | IDSW |
-|----------|------|------|------|-------|------|
-| MOT17-02-SDP | 26.8 | 37.5 | 2,480 | 11,085 | 43 |
-| MOT17-04-SDP | 48.3 | 57.9 | 6,349 | 18,173 | 81 |
-| MOT17-05-SDP | 29.8 | 48.7 | 1,556 | 3,224 | 77 |
-| MOT17-09-SDP | 45.7 | 55.8 | 1,438 | 1,425 | 30 |
-| MOT17-10-SDP | 46.2 | 40.9 | 1,721 | 5,118 | 68 |
-| MOT17-11-SDP | 43.2 | 56.4 | 2,103 | 3,234 | 22 |
-| MOT17-13-SDP | 43.2 | 48.9 | 550 | 6,002 | 58 |
-| **Aggregate** | **42.3** | **49.5** | **16,197** | **48,261** | **379** |
+- The BP demo is workflow assistance only, not medical diagnosis.
+- The current detector focuses on `cuff`, `sleeve`, and `upper_arm`.
+- Some events are synthetic or inferred in the current harness.
+- More training data is needed for robust lighting, camera angle, occlusion, clothing, skin tone, and device variation.
+- The local FastVLM hack test depends on local model availability.
 
 ---
 
-## Segmentation Inference Benchmarking ![new](https://img.shields.io/badge/NEW-blue)
+## Roadmap
 
-Measures MLX segmentation inference latency and throughput.
-
-```bash
-# All models
-python scripts/benchmark_yolo26_seg_inference.py --skip-mps --skip-cpu
-
-# Specific models only
-python scripts/benchmark_yolo26_seg_inference.py --models n s --skip-mps --skip-cpu
-
-# More timed runs for stable results
-python scripts/benchmark_yolo26_seg_inference.py --runs 20 --skip-mps --skip-cpu
-```
-
-**Output:** `results/yolo26_seg_inference_three_way.json` (override with `--output path.json`)
-
-| Metric | Description |
-|--------|-------------|
-| End-to-end latency (ms) | Full predict including pre/post processing and mask generation |
-| Forward-pass-only (ms) | Model inference only |
-| FPS | Throughput (1000 / mean_ms) |
-| Peak memory (MB) | MLX Metal memory usage |
-
-The benchmark script also supports PyTorch MPS and CPU backends for comparison. See [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md) for full multi-backend benchmarking instructions.
-
-**Defaults:** 3 warmup runs, 10 timed runs, 640×640 image size
-
-![Segmentation Inference FPS Comparison](assets/yolo26_seg_inference_fps.png)
+1. Replace synthetic BP events with app-derived or device-derived events.
+2. Add more BP tags: monitor, connector, button, elbow bend.
+3. Improve tracking, temporal smoothing, and camera calibration.
+4. Add Creator Mode for labeling, rule authoring, and package export.
+5. Add evidence review UI and privacy-log export.
+6. Build a SOUP package gallery / marketplace.
 
 ---
 
-## COCO val2017 Segmentation Validation (mAP) ![new](https://img.shields.io/badge/NEW-blue)
+## Submission Links
 
-Evaluates mask and box accuracy on the full COCO val2017 set (5,000 images) using official pycocotools with both `iouType='bbox'` and `iouType='segm'`.
+- GitHub repo: https://github.com/robot007/SoPilot
+- 1-minute demo video: https://youtu.be/OCmniMj3spg
+- Social post: TODO
 
-### Setup COCO Dataset
+![SoPilot makes SOP video checking affordable, private, and auditable.](doc/img/readme-slogan.svg)
 
-COCO val2017 segmentation uses the same dataset as detection (see [COCO val2017 Validation](#coco-val2017-validation-map) above). The `coco2017labels-segments.zip` archive used in that setup already contains polygon labels required for mask evaluation.
+![](doc/img/readme-spacer-10cm.svg)
 
-### Run Validation
 
-```bash
-# Single model
-python scripts/evaluate_coco_seg_val.py --model yolo26n-seg --data datasets/coco
+Dr. Zhen Song
+zhensong23931@gmail.com
 
-# All 5 models
-python scripts/evaluate_coco_seg_val.py --model all --data datasets/coco
+5/24/2026
 
-# Quick sanity check (100 images)
-python scripts/evaluate_coco_seg_val.py --model yolo26n-seg --data datasets/coco --subset 100
-
-# Custom thresholds
-python scripts/evaluate_coco_seg_val.py --model yolo26n-seg --data datasets/coco --conf 0.001
-```
-
-**Output:** `results/yolo26_seg_coco_val_results.json` (override with `--output dir/`)
-
-| Metric | Description |
-|--------|-------------|
-| mAP<sup>mask</sup>@0.5:0.95 | Primary mask metric |
-| mAP<sup>mask</sup>@0.5 | Mask AP at IoU=0.50 |
-| mAP<sup>box</sup>@0.5:0.95 | Box detection AP (primary) |
-| mAP<sup>box</sup>@0.5 | Box detection AP at IoU=0.50 |
-| mAP (small/medium/large) | AP by object size (mask + box) |
-
-**Defaults:** conf=0.001, imgsz=640, batch=16 (all overridable via CLI flags)
-
----
-
-## Segmentation Training Benchmarking ![new](https://img.shields.io/badge/NEW-blue)
-
-COCO128-Seg dataset (~7 MB, 128 images with polygon labels) is downloaded automatically on first run.
-
-```bash
-# All models
-python scripts/benchmark_yolo26_seg_training_mlx.py
-
-# Specific models with custom settings
-python scripts/benchmark_yolo26_seg_training_mlx.py --models n s --epochs 10 --batch 4
-```
-
-**Output:** `results/yolo26_seg_mlx_training_final.json` (override with `--output path.json`)
-
-| Metric | Description |
-|--------|-------------|
-| Training time (s) | Total wall-clock time |
-| Time/epoch (s) | Average per epoch |
-| Final loss | End-of-training loss |
-| mAP@0.5 | Post-training accuracy (mask + box) |
-| Peak memory (MB) | Metal peak memory |
-
-**Training defaults:** 10 epochs, batch=4, COCO128-Seg dataset, optimizer=auto (mirrors Ultralytics: AdamW for ≤10k iter, MuSGD otherwise — short COCO128-Seg runs use AdamW), lr=0.000119 (auto-LR formula `0.002 * 5 / (4 + nc)` for nc=80). All overridable via `--epochs`, `--batch`, `--lr`, `--output`.
-
-For PyTorch MPS/CPU segmentation training benchmarks and chart generation, see [GUIDE_SEGMENTATION.md](GUIDE_SEGMENTATION.md).
-
-![Segmentation Training Time Comparison](assets/yolo26_seg_training_time.png)
-
----
-
-## Architecture
-
-YOLO26 introduces:
-
-- **DFL Removal** — Eliminates Distribution Focal Loss for simpler export and broader edge compatibility
-- **End-to-End Detection** — NMS-free inference using one-to-one matching, producing predictions directly without post-processing
-- **Simplified Box Regression** — `reg_max=1` removes DFL bins entirely
-- **ProgLoss + STAL** — Improved loss functions with notable gains on small-object detection
-- **MuSGD Optimizer** — Hybrid of SGD and Muon (Newton-Schulz orthogonalization) with auto LR, inspired by advances in LLM training
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
-
-This project utilizes code from Ultralytics YOLO26 (https://github.com/ultralytics/ultralytics), modified in 2026.
-
-See the [LICENSE](LICENSE) file for the full license text.
+[1] SOP Management Solution Market, Persistence Market Research: https://www.persistencemarketresearch.com/market-research/sop-management-solutions-market.asp
+[2] SOP Management Solution Market, Precedence Research: https://www.precedenceresearch.com/sop-management-solution-market
+[3] Redmon, J., Divvala, S., Girshick, R., & Farhadi, A. (2016). You Only Look Once: Unified, Real-Time Object Detection. CVPR 2016. https://arxiv.org/abs/1506.02640
+[4] Vasu, P. K. A., Faghri, F., Li, C. L., Koc, C., True, N., Antony, A., Santhanam, G., Gabriel, J., Grasch, P., Tuzel, O., & Pouransari, H. (2025). FastVLM: Efficient Vision Encoding for Vision Language Models. CVPR 2025. https://arxiv.org/abs/2412.13303
