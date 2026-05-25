@@ -1,7 +1,7 @@
 # SoPilot
 ![Private SOP video checking without VLM fine-tuning bills](doc/img/readme-subtitle.svg)
 
-<img src="doc/img/soup-logo.png" alt="SOUP logo" width="150">
+<img src="doc/img/SOUP-logo.png" alt="SOUP logo" width="150">
 
 version 1.6
 
