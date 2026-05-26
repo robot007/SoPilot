@@ -41,8 +41,8 @@ SoPilot's answer is simple: keep the video and final decision local, train a sma
 | Custom classes | `cuff`, `sleeve`, `upper_arm` |
 | Rule engine | `sandbox/soup-engine`, standalone Python package `sopilot-rules` |
 | Main design doc | [SOUP.md](SOUP.md) |
-| Github | https://lnkd.in/gEUbb9qU |
-| Social post | https://www.linkedin.com/feed/update/urn:li:activity:7464565777464004608/  |
+| Github | https://github.com/robot007/SoPilot |
+| Social post | [LinkedIn](https://www.linkedin.com/posts/zhen-song-3a9337_computervision-yolo-applesilicon-activity-7464565777464004608-Kl6P)  |
 | Hardware | Macbook Air 2026, M4, 24GB RAM |
 | Team | Zhen Song, Issac Yenca | 
 
