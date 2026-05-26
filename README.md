@@ -38,14 +38,14 @@ SoPilot's answer is simple: keep the video and final decision local, train a sma
 | Track | Enterprise, with healthcare/home SOP validation as the demo domain |
 | Project | SoPilot — local-first SOP video checker powered by the SOUP Engine |
 | Core model | YOLO26 MLX `yolo26n`, running locally on Apple Silicon |
-| Demo SOP | Blood Pressure Monitor workflow |
 | Custom classes | `cuff`, `sleeve`, `upper_arm` |
 | Rule engine | `sandbox/soup-engine`, standalone Python package `sopilot-rules` |
 | Main design doc | [SOUP.md](SOUP.md) |
-| Demo video | TODO: paste 1-minute demo video URL |
-| Social post | TODO: paste X or LinkedIn URL |
-| Hardware | TODO: fill exact Mac model, chip, and RAM |
-| Team | TODO: Zhen Song / team members |
+| Github | https://lnkd.in/gEUbb9qU |
+| Social post | https://www.linkedin.com/feed/update/urn:li:activity:7464565777464004608/  |
+| Hardware | Macbook Air 2026, M4, 24GB RAM |
+| Team | Zhen Song, Issac Yenca | 
+
 
 Official challenge brief: [webAI YOLO26 MLX Build Challenge](https://community.webai.com/t/the-yolo26-mlx-build-challenge-may-2026/16).
 
